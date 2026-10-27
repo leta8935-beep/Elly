@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from utils.checks import is_staff
-from utils.command_groups import admin
 
 STATE_TRANSLATIONS = {
     "РОССИЯ": "RUSSIAN FEDERATION", "РОССИЙСКАЯ ФЕДЕРАЦИЯ": "RUSSIAN FEDERATION",
@@ -30,13 +29,10 @@ class StateModal(discord.ui.Modal, title="Настройка государст�
         await self.bot.db.set_guild_setting(self.guild_id, "state_code", code)
         await self.bot.db.set_guild_setting(self.guild_id, "state_name_en", en_name)
         
-        embed = discord.Embed(title="✅ Государство обновлено", color=0x57F287)
-        embed.add_field(name="Название", value=f"{ru_name} / {en_name}", inline=False)
-        embed.add_field(name="Код", value=code, inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(f"✅ Государство: **{ru_name} / {en_name} ({code})**", ephemeral=True)
 
 class CurrencyModal(discord.ui.Modal, title="Настройка валюты"):
-    currency = discord.ui.TextInput(label="Символ или название валюты", placeholder="RUB или ₽", max_length=10)
+    currency = discord.ui.TextInput(label="Символ или название", placeholder="RUB или ₽", max_length=10)
 
     def __init__(self, bot, guild_id):
         super().__init__()
@@ -45,7 +41,23 @@ class CurrencyModal(discord.ui.Modal, title="Настройка валюты"):
 
     async def on_submit(self, interaction: discord.Interaction):
         await self.bot.db.set_guild_setting(self.guild_id, "currency", self.currency.value.strip())
-        await interaction.response.send_message(f"✅ Валюта изменена на **{self.currency.value.strip()}**", ephemeral=True)
+        await interaction.response.send_message(f"✅ Валюта: **{self.currency.value.strip()}**", ephemeral=True)
+
+class ManagerModal(discord.ui.Modal, title="Назначить менеджера"):
+    user_id = discord.ui.TextInput(label="Discord ID пользователя", placeholder="123456789012345678")
+
+    def __init__(self, bot, guild_id):
+        super().__init__()
+        self.bot = bot
+        self.guild_id = guild_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            uid = int(self.user_id.value.replace("<@", "").replace("!", "").replace(">", ""))
+            await self.bot.db.set_guild_setting(self.guild_id, "manager_id", uid)
+            await interaction.response.send_message(f"✅ <@{uid}> теперь менеджер бота.", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("Ошибка: неверный ID.", ephemeral=True)
 
 class ChannelSelect(discord.ui.Select):
     def __init__(self, bot, guild_id, channels):
@@ -56,7 +68,7 @@ class ChannelSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         await self.bot.db.set_guild_setting(self.guild_id, "review_channel_id", int(self.values[0]))
-        await interaction.response.send_message(f"✅ Канал проверки установлен: <#{self.values[0]}>", ephemeral=True)
+        await interaction.response.send_message(f"✅ Канал проверки: <#{self.values[0]}>", ephemeral=True)
 
 class RolesModal(discord.ui.Modal, title="Настройка ролей"):
     citizen = discord.ui.TextInput(label="ID ролей граждан (через запятую)", required=False)
@@ -76,43 +88,11 @@ class RolesModal(discord.ui.Modal, title="Настройка ролей"):
             if field.value: await self.bot.db.set_guild_setting(self.guild_id, col, int(field.value))
         await interaction.response.send_message("✅ Роли сохранены!", ephemeral=True)
 
-
-class WelcomeChannelSelect(discord.ui.Select):
-    def __init__(self, bot, guild_id, channels):
-        options = [
-            discord.SelectOption(
-                label=f"#{ch.name}"[:100],
-                value=str(ch.id),
-                description="Канал для красивых приветствий"[:100],
-            )
-            for ch in channels[:25]
-        ]
-        super().__init__(placeholder="Выберите канал приветствий…", options=options)
-        self.bot = bot
-        self.guild_id = guild_id
-
-    async def callback(self, interaction: discord.Interaction):
-        await self.bot.db.set_guild_setting(
-            self.guild_id, "welcome_channel_id", int(self.values[0])
-        )
-        await interaction.response.send_message(
-            f"✅ Канал приветствий установлен: <#{self.values[0]}>", ephemeral=True
-        )
-
-
 class SetupView(discord.ui.View):
-    def __init__(self, bot, guild_id, settings):
+    def __init__(self, bot, guild_id):
         super().__init__(timeout=None)
         self.bot = bot
         self.guild_id = guild_id
-        self.settings = settings
-        enabled = bool(settings["welcome_enabled"]) if settings and settings["welcome_enabled"] is not None else False
-        # label обновится после открытия setup; это только начальное состояние
-        self._welcome_enabled = enabled
-        for item in self.children:
-            if getattr(item, "emoji", None) == "👋":
-                item.label = "Приветствия: ВКЛ" if enabled else "Приветствия: ВЫКЛ"
-                item.style = discord.ButtonStyle.success if enabled else discord.ButtonStyle.danger
 
     @discord.ui.button(label="Государство", style=discord.ButtonStyle.primary, emoji="🌍")
     async def state_btn(self, i: discord.Interaction, b: discord.ui.Button):
@@ -132,23 +112,13 @@ class SetupView(discord.ui.View):
     async def roles_btn(self, i: discord.Interaction, b: discord.ui.Button):
         await i.response.send_modal(RolesModal(self.bot, self.guild_id))
 
-    @discord.ui.button(label="Приветствия", style=discord.ButtonStyle.success, emoji="👋", row=1)
-    async def welcome_toggle_btn(self, i: discord.Interaction, b: discord.ui.Button):
-        s = await self.bot.db.get_guild_settings(self.guild_id)
-        enabled = bool(s["welcome_enabled"]) if s and s["welcome_enabled"] is not None else False
-        enabled = not enabled
-        await self.bot.db.set_guild_setting(self.guild_id, "welcome_enabled", enabled)
-        b.label = "Приветствия: ВКЛ" if enabled else "Приветствия: ВЫКЛ"
-        b.style = discord.ButtonStyle.success if enabled else discord.ButtonStyle.danger
-        await i.response.edit_message(view=self)
+    @discord.ui.button(label="Менеджер", style=discord.ButtonStyle.secondary, emoji="👑", row=1)
+    async def manager_btn(self, i: discord.Interaction, b: discord.ui.Button):
+        if i.user.id != i.guild.owner_id:
+            return await i.response.send_message("Только владелец сервера может назначать менеджера.", ephemeral=True)
+        await i.response.send_modal(ManagerModal(self.bot, self.guild_id))
 
-    @discord.ui.button(label="Канал приветствий", style=discord.ButtonStyle.secondary, emoji="💬", row=1)
-    async def welcome_channel_btn(self, i: discord.Interaction, b: discord.ui.Button):
-        view = discord.ui.View(timeout=60)
-        view.add_item(WelcomeChannelSelect(self.bot, self.guild_id, i.guild.text_channels))
-        await i.response.send_message("Выберите канал, куда бот будет отправлять приветствия:", view=view, ephemeral=True)
-
-    @discord.ui.button(label="Закрыть", style=discord.ButtonStyle.danger, emoji="✖️", row=2)
+    @discord.ui.button(label="Закрыть", style=discord.ButtonStyle.danger, emoji="✖️", row=1)
     async def close_btn(self, i: discord.Interaction, b: discord.ui.Button):
         await i.response.edit_message(content="Настройка завершена.", view=None)
 
@@ -156,7 +126,7 @@ class Settings(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @admin.command(name="setup", description="[STAFF] Настройка сервера")
+    @app_commands.command(name="setup", description="[STAFF] Настройка сервера")
     @is_staff()
     async def setup_cmd(self, i: discord.Interaction):
         s = await self.bot.db.get_guild_settings(i.guild.id)
@@ -166,35 +136,23 @@ class Settings(commands.Cog):
         ch = f"<#{s['review_channel_id']}>" if s and s["review_channel_id"] else "Не задано"
         
         embed = discord.Embed(title="⚙️ Настройка сервера", color=0x5865F2)
-        embed.description = "Нажмите на кнопку ниже, чтобы изменить параметр."
+        embed.description = "Нажмите на кнопку, чтобы изменить параметр."
         embed.add_field(name="🌍 Государство", value=f"{ru} ({code})", inline=False)
         embed.add_field(name="💵 Валюта", value=curr, inline=False)
         embed.add_field(name="📢 Канал проверки", value=ch, inline=False)
-        embed.set_footer(text="Все изменения применяются сразу.")
         
-        await i.response.send_message(embed=embed, view=SetupView(self.bot, i.guild.id, s), ephemeral=True)
+        await i.response.send_message(embed=embed, view=SetupView(self.bot, i.guild.id), ephemeral=True)
 
-    @admin.command(name="manager", description="[OWNER] Назначить менеджера")
-    async def set_manager(self, i: discord.Interaction, member: discord.Member):
-        if i.user.id != i.guild.owner_id:
-            return await i.response.send_message("Только владелец сервера.", ephemeral=True)
-        await self.bot.db.set_guild_setting(i.guild.id, "manager_id", member.id)
-        await i.response.send_message(f"{member.mention} теперь менеджер бота.", ephemeral=True)
-
-    @admin.command(name="panel", description="[STAFF] Отправить панель")
+    @app_commands.command(name="idtext", description="[STAFF] Отправить панель")
     @is_staff()
     @app_commands.choices(message_type=[
         app_commands.Choice(name="Регистрация", value="registration"),
         app_commands.Choice(name="Набор в Стафф", value="staff_registration"),
         app_commands.Choice(name="Заявка на Организацию", value="org_registration")
     ])
-    async def idtext(self, i: discord.Interaction, channel: discord.TextChannel, message_type: app_commands.Choice[str], text: str = "Нажмите кнопку ниже.", image_file: discord.Attachment = None, image_url: str = None):
+    async def idtext(self, i: discord.Interaction, channel: discord.TextChannel, message_type: app_commands.Choice[str], text: str = "Нажмите кнопку ниже.", image_url: str = None):
         embed = discord.Embed(title="📋 Заявка", description=text, color=discord.Color.blue())
-        file = None
-        if image_file:
-            file = await image_file.to_file()
-            embed.set_image(url=f"attachment://{file.filename}")
-        elif image_url: embed.set_image(url=image_url)
+        if image_url: embed.set_image(url=image_url)
 
         from cogs.registration import RegistrationView, StaffRegistrationView, OrgRegistrationView
         if message_type.value == "registration":
@@ -207,7 +165,7 @@ class Settings(commands.Cog):
             embed.title = "🏢 Открытие Организации"
             view = OrgRegistrationView()
         
-        await channel.send(embed=embed, view=view, file=file)
+        await channel.send(embed=embed, view=view)
         await i.response.send_message("✅ Отправлено!", ephemeral=True)
 
 async def setup(bot):

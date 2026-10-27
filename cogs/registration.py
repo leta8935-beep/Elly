@@ -4,7 +4,6 @@ from discord.ext import commands
 from discord import app_commands
 from utils.checks import is_staff
 from utils.render import render_template
-from utils.command_groups import profile
 
 # ═══════════════════════════════════════════════════
 # 1. РЕГИСТРАЦИЯ ГРАЖДАН
@@ -180,12 +179,12 @@ class StaffReviewView(discord.ui.View):
         await interaction.message.delete()
 
 # ═══════════════════════════════════════════════════
-# 3. ЗАЯВКА НА ОРГАНИЗАЦИЮ (С ЛОГОТИПОМ)
+# 3. ЗАЯВКА НА ОРГАНИЗАЦИЮ
 # ═══════════════════════════════════════════════════
 class OrgModalStep1(discord.ui.Modal, title="Заявка на организацию (Шаг 1 из 2)"):
-    name = discord.ui.TextInput(label="Название организации", placeholder="ООО 'Ромашка'", max_length=50)
-    org_type = discord.ui.TextInput(label="Тип (СМИ, Бизнес, НКО...)", placeholder="СМИ", max_length=50)
-    sphere = discord.ui.TextInput(label="Сфера деятельности", placeholder="IT, Торговля, Развлечения...", max_length=100)
+    name = discord.ui.TextInput(label="Название", placeholder="ООО 'Ромашка'", max_length=50)
+    org_type = discord.ui.TextInput(label="Тип", placeholder="СМИ, Бизнес, НКО...", max_length=50)
+    sphere = discord.ui.TextInput(label="Сфера деятельности", placeholder="IT, Торговля...", max_length=100)
     mission = discord.ui.TextInput(label="Миссия / Цель", style=discord.TextStyle.paragraph, max_length=500)
     staff = discord.ui.TextInput(label="Состав (участники, роли)", style=discord.TextStyle.paragraph, max_length=500)
 
@@ -200,8 +199,8 @@ class OrgModalStep2(discord.ui.Modal, title="Заявка на организа�
     logo_url = discord.ui.TextInput(label="Ссылка на логотип", placeholder="https://...", max_length=300)
     products = discord.ui.TextInput(label="Продукция / Услуги", style=discord.TextStyle.paragraph, max_length=500)
     partners = discord.ui.TextInput(label="Партнёры / Конкуренты", style=discord.TextStyle.paragraph, max_length=500)
-    ownership = discord.ui.TextInput(label="Форма собственности", placeholder="Частная, государственная...", max_length=100)
-    funding = discord.ui.TextInput(label="Источники финансирования", placeholder="Инвестиции, бюджет...", max_length=200)
+    ownership = discord.ui.TextInput(label="Форма собственности", placeholder="Частная...", max_length=100)
+    funding = discord.ui.TextInput(label="Источники финансирования", placeholder="Инвестиции...", max_length=200)
 
     async def on_submit(self, interaction: discord.Interaction):
         data = interaction.client.temp_reg_data.get(f"org_{interaction.user.id}")
@@ -224,21 +223,18 @@ class OrgModalStep2(discord.ui.Modal, title="Заявка на организа�
         embed.add_field(name="Партнёры", value=self.partners.value, inline=False)
         embed.add_field(name="Собственность", value=self.ownership.value, inline=True)
         embed.add_field(name="Финансирование", value=self.funding.value, inline=True)
-        
-        # Отображаем логотип в эмбеде заявки
         embed.set_thumbnail(url=self.logo_url.value)
         
-        # Сохраняем ссылку на логотип в данные для дальнейшего использования
         data["logo_url"] = self.logo_url.value
 
         view = OrgReviewView(target_user=interaction.user, data=data)
         await review_channel.send(content=f"🏢 Заявка от {interaction.user.mention}", embed=embed, view=view)
 
-        try: await interaction.user.send("📝 **Копия вашей заявки на организацию:**", embed=embed)
+        try: await interaction.user.send("📝 **Копия вашей заявки:**", embed=embed)
         except: pass
         
         del interaction.client.temp_reg_data[f"org_{interaction.user.id}"]
-        await interaction.response.send_message("✅ Заявка на организацию отправлена!", ephemeral=True)
+        await interaction.response.send_message("✅ Заявка отправлена!", ephemeral=True)
 
 class OrgNextStepView(discord.ui.View):
     @discord.ui.button(label="Заполнить остальные данные", style=discord.ButtonStyle.primary)
@@ -250,7 +246,6 @@ class OrgRegistrationView(discord.ui.View):
 
     @discord.ui.button(label="Подать заявку на организацию", style=discord.ButtonStyle.green, custom_id="start_org_registration")
     async def start_org_reg(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Теперь можно создавать несколько организаций, поэтому проверку на наличие убираем
         await interaction.response.send_modal(OrgModalStep1())
 
 class OrgReviewView(discord.ui.View):
@@ -266,13 +261,8 @@ class OrgReviewView(discord.ui.View):
         embed.color = discord.Color.green()
         embed.set_footer(text=f"Одобрено | Проверяющий: {interaction.user.name}")
 
-        # Создаем организацию в новой таблице organizations с логотипом
         await interaction.client.db.create_organization(
-            self.target_user.id, 
-            self.data["name"], 
-            self.data["org_type"], 
-            self.data["sphere"],
-            self.data["logo_url"]
+            self.target_user.id, self.data["name"], self.data["org_type"], self.data["sphere"], self.data["logo_url"]
         )
 
         try: await self.target_user.send(f"✅ Ваша заявка на организацию **{self.data['name']}** одобрена!")
@@ -286,12 +276,22 @@ class OrgReviewView(discord.ui.View):
         await interaction.message.delete()
 
 # ═══════════════════════════════════════════════════
-# 4. КОМАНДЫ И РЕДАКТИРОВАНИЕ
+# 4. КОМАНДЫ (ПАСПОРТ)
 # ═══════════════════════════════════════════════════
+class PassportEditView(discord.ui.View):
+    def __init__(self, bot, member):
+        super().__init__(timeout=120)
+        self.bot = bot
+        self.member = member
+
+    @discord.ui.button(label="Редактировать паспорт", style=discord.ButtonStyle.secondary, emoji="✏️")
+    async def edit_pass(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Что изменить?", view=EditSelectView(self.member), ephemeral=True)
+
 class Registration(commands.Cog):
     def __init__(self, bot): self.bot = bot
 
-    @profile.command(name="passport", description="Посмотреть свой паспорт")
+    @app_commands.command(name="passport", description="Посмотреть свой паспорт")
     async def passport(self, i: discord.Interaction, member: discord.Member = None):
         member = member or i.user
         p = await self.bot.db.get_passport(member.id)
@@ -302,52 +302,21 @@ class Registration(commands.Cog):
         state_en = settings["state_name_en"] if settings and settings["state_name_en"] else "RUSSIAN FEDERATION"
         state_code = settings["state_code"] if settings and settings["state_code"] else "RUS"
 
-        await i.response.defer()
+        await i.response.defer(ephemeral=(member.id == i.user.id))
         
         data = {
-            "photo_url": p["photo_url"], 
-            "surname": p["surname"], 
-            "name": p["name"], 
-            "patronymic": p["patronymic"], 
-            "dob": p["dob"], 
-            "pob": p["pob"],
-            "state_name": f"{state_ru.upper()} / {state_en.upper()}",
-            "state_code": state_code.upper(),
-            "passport_number": str(member.id).zfill(10)[:10],
-            "discord_id": str(member.id)
+            "photo_url": p["photo_url"], "surname": p["surname"], "name": p["name"], "patronymic": p["patronymic"], 
+            "dob": p["dob"], "pob": p["pob"], "state_name": f"{state_ru.upper()} / {state_en.upper()}",
+            "state_code": state_code.upper(), "passport_number": str(member.id).zfill(10)[:10], "discord_id": str(member.id)
         }
         
         try:
             png = await render_template("passport.html", data)
             file = discord.File(fp=io.BytesIO(png), filename="passport.png")
-            await i.followup.send(file=file)
+            view = PassportEditView(self.bot, member) if i.user.guild_permissions.administrator else None
+            await i.followup.send(file=file, view=view)
         except Exception as e:
             await i.followup.send(f"Ошибка рендера: {e}")
-
-    @profile.command(name="edit", description="[STAFF] Изменить паспорт")
-    @is_staff()
-    async def edit_passport(self, i: discord.Interaction, member: discord.Member):
-        p = await self.bot.db.get_passport(member.id)
-        if not p: return await i.response.send_message("❌ Нет паспорта.", ephemeral=True)
-        await i.response.send_message(f"Что изменить у {member.mention}?", view=EditSelectView(member), ephemeral=True)
-
-    @profile.command(name="register", description="[STAFF] Зарегистрировать вручную")
-    @is_staff()
-    async def register_admin(self, i: discord.Interaction, member: discord.Member, surname: str, name: str, patronymic: str, dob: str, pob: str, bio: str, photo_url: str):
-        await self.bot.db.save_passport(member.id, surname, name, patronymic, dob, pob, bio, photo_url)
-        settings = await self.bot.db.get_guild_settings(i.guild.id)
-        roles_text = "Нет"
-        if settings and settings["start_roles"]:
-            role_ids = settings["start_roles"].split(",")
-            roles = [i.guild.get_role(int(r)) for r in role_ids if r]
-            roles = [r for r in roles if r]
-            if roles:
-                try:
-                    await member.add_roles(*roles)
-                    roles_text = ", ".join([r.mention for r in roles])
-                except: roles_text = "Ошибка"
-        
-        await i.response.send_message(f"✅ {member.mention} зарегистрирован. Роли: {roles_text}", ephemeral=True)
 
 class EditSelectView(discord.ui.View):
     def __init__(self, member: discord.Member):
