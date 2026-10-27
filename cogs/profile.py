@@ -1,5 +1,4 @@
 import time
-
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -45,10 +44,13 @@ class Profile(commands.Cog):
 
     @profile.command(name="show", description="Ваш профиль")
     @app_commands.describe(member="Чей профиль (по умолчанию — ваш)")
-    async def profile(self, interaction: discord.Interaction, member: discord.Member = None):
+    async def profile_show(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member = None,
+    ):
         member = member or interaction.user
         user = await db.get_user(member.id)
-
         xp = user["xp"]
         level = user["level"]
         next_xp = xp_needed(level)
@@ -58,20 +60,19 @@ class Profile(commands.Cog):
         bar_len = 15
         filled = int(progress * bar_len)
         bar = "▰" * filled + "▱" * (bar_len - filled)
-
         job = user["job"] or "Безработный"
         balance = user["wallet"] + user["bank"]
 
         embed = discord.Embed(
-            title=f"👤 Профиль — {member.display_name}",
+            title=f"Профиль — {member.display_name}",
             color=discord.Color.blurple(),
         )
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.add_field(name="🏅 Уровень", value=f"`{level}`", inline=True)
-        embed.add_field(name="💼 Профессия", value=job, inline=True)
-        embed.add_field(name="💵 Капитал", value=f"`{balance:,}` монет", inline=True)
+        embed.add_field(name="Уровень", value=f"`{level}`", inline=True)
+        embed.add_field(name="Профессия", value=job, inline=True)
+        embed.add_field(name="Капитал", value=f"`{balance:,}` монет", inline=True)
         embed.add_field(
-            name="📈 Прогресс",
+            name="Прогресс",
             value=f"`{bar}` {progress_xp}/{next_xp} XP",
             inline=False,
         )
@@ -84,15 +85,17 @@ class Profile(commands.Cog):
         medals = ["🥇", "🥈", "🥉"]
         for i, row in enumerate(rows):
             try:
-                user = self.bot.get_user(row["user_id"]) or await self.bot.fetch_user(row["user_id"])
+                user = (
+                    self.bot.get_user(row["user_id"])
+                    or await self.bot.fetch_user(row["user_id"])
+                )
                 name = user.display_name
             except Exception:
                 name = f"ID {row['user_id']}"
             prefix = medals[i] if i < 3 else f"`{i + 1}.`"
             lines.append(f"{prefix} **{name}** — ур. `{row['level']}` ({row['xp']} XP)")
-
         embed = discord.Embed(
-            title="🏅 Топ по уровню",
+            title="Топ по уровню",
             description="\n".join(lines) or "Пусто",
             color=discord.Color.blurple(),
         )
