@@ -7,6 +7,7 @@ from utils.render import render_template
 
 def fmt(n: int) -> str: return f"{n:,}".replace(",", " ")
 
+# ─── Модалки и кнопки управления (без изменений) ───
 class OrgEditModal(discord.ui.Modal, title="Настройки организации"):
     name = discord.ui.TextInput(label="Название", max_length=50)
     logo_url = discord.ui.TextInput(label="Ссылка на логотип", max_length=300)
@@ -25,7 +26,6 @@ class OrgEditModal(discord.ui.Modal, title="Настройки организа�
 
 class AdminBalanceModal(discord.ui.Modal):
     amount = discord.ui.TextInput(label="Сумма", placeholder="1000 или -1000", max_length=12)
-
     def __init__(self, bot, org_id: int, action: str):
         super().__init__(title="Добавить в бюджет" if action == "add" else "Убрать из бюджета")
         self.bot = bot
@@ -40,10 +40,8 @@ class AdminBalanceModal(discord.ui.Modal):
             return await interaction.response.send_message("Введите положительное число.", ephemeral=True)
         
         org = await self.bot.db.get_organization(self.org_id)
-        if self.action == "add":
-            await self.bot.db.add_to_org_balance(self.org_id, amt)
-        else:
-            await self.bot.db.update_organization(self.org_id, balance=max(0, org["balance"] - amt))
+        if self.action == "add": await self.bot.db.add_to_org_balance(self.org_id, amt)
+        else: await self.bot.db.update_organization(self.org_id, balance=max(0, org["balance"] - amt))
         
         await interaction.response.send_message(f"✅ Бюджет обновлён. Текущий: **{fmt(org['balance'] + (amt if self.action == 'add' else -amt))}** RUB", ephemeral=True)
 
@@ -60,8 +58,7 @@ class StaffManageView(discord.ui.View):
     @discord.ui.button(label="Список сотрудников", style=discord.ButtonStyle.secondary, emoji="📋")
     async def list_staff(self, interaction: discord.Interaction, button: discord.ui.Button):
         members = await self.bot.db.get_org_members(self.org_id)
-        if not members:
-            return await interaction.response.send_message("В организации нет сотрудников.", ephemeral=True)
+        if not members: return await interaction.response.send_message("В организации нет сотрудников.", ephemeral=True)
         text = "\n".join([f"• <@{m['user_id']}> — {m['rank']}" for m in members])
         await interaction.response.send_message(f"**Сотрудники:**\n{text}", ephemeral=True)
 
@@ -82,12 +79,12 @@ class HireModal(discord.ui.Modal, title="Нанять сотрудника"):
         await interaction.response.send_message(f"✅ <@{uid}> принят на должность **{self.rank.value}**!", ephemeral=True)
 
 class OrgActions(discord.ui.View):
-    def __init__(self, bot, org_id: int, is_admin: bool = False):
+    def __init__(self, bot, org_id: int, is_admin_view: bool = False):
         super().__init__(timeout=120)
         self.bot = bot
         self.org_id = org_id
-        if is_admin:
-            delete_btn = discord.ui.Button(label="Удалить организацию", style=discord.ButtonStyle.danger, emoji="🗑️", row=2)
+        if is_admin_view:
+            delete_btn = discord.ui.Button(label="Удалить", style=discord.ButtonStyle.danger, emoji="🗑️", row=2)
             delete_btn.callback = self.delete_org
             self.add_item(delete_btn)
 
@@ -104,8 +101,7 @@ class OrgActions(discord.ui.View):
         now = time.time()
         hours = (now - org["last_collect"]) / 3600
         if hours < 1: return await interaction.response.send_message(f"Прибыль через {int((1-hours)*60)} мин.", ephemeral=True)
-        income = org["level"] * 500
-        accumulated = min(int(hours * income), income * 24)
+        accumulated = min(int(hours * (org["level"] * 500)), (org["level"] * 500) * 24)
         await self.bot.db.update_wallet(org["owner_id"], accumulated)
         await self.bot.db.update_organization(self.org_id, last_collect=now)
         await interaction.response.send_message(f"Собрано **{fmt(accumulated)}** RUB!", ephemeral=True)
@@ -121,9 +117,7 @@ class OrgActions(discord.ui.View):
             return await interaction.response.send_message("Это не ваша организация.", ephemeral=True)
         cost = org["level"] * 10000
         user = await self.bot.db.get_user(org["owner_id"])
-        if user["wallet"] < cost:
-            return await interaction.response.send_message(f"Нужно **{fmt(cost)}** RUB на кошельке владельца.", ephemeral=True)
-        
+        if user["wallet"] < cost: return await interaction.response.send_message(f"Нужно **{fmt(cost)}** RUB на кошельке.", ephemeral=True)
         await self.bot.db.update_wallet(org["owner_id"], -cost)
         await self.bot.db.update_organization(self.org_id, level=org["level"]+1)
         await interaction.response.send_message(f"Организация улучшена до **LVL {org['level']+1}**!", ephemeral=True)
@@ -169,45 +163,96 @@ class DepositModal(discord.ui.Modal, title="Пополнение бюджета"
         await self.bot.db.add_to_org_balance(self.org_id, amt)
         await interaction.response.send_message(f"Бюджет пополнен на **{fmt(amt)}** RUB.", ephemeral=True)
 
-class OrgSelect(discord.ui.Select):
-    def __init__(self, orgs: list, bot, is_admin: bool):
-        options = [discord.SelectOption(label=o['name'], value=str(o['org_id']), description=f"Владелец: {o['owner_id']}" if is_admin else f"LVL {o['level']}") for o in orgs]
+# ─── НОВОЕ МЕНЮ ВЫБОРА ───
+class OrgSelectMenu(discord.ui.Select):
+    def __init__(self, orgs: list, bot, is_admin_view: bool):
+        options = []
+        for o in orgs:
+            desc = f"Владелец: <@{o['owner_id']}>" if is_admin_view else f"{o['org_type']} • LVL {o['level']}"
+            options.append(discord.SelectOption(label=o['name'], value=str(o['org_id']), description=desc))
+        
         super().__init__(placeholder="Выберите организацию...", options=options)
         self.bot = bot
-        self.is_admin = is_admin
+        self.is_admin_view = is_admin_view
+
     async def callback(self, interaction: discord.Interaction):
         org_id = int(self.values[0])
         await interaction.response.defer()
         org = await self.bot.db.get_organization(org_id)
         now = time.time()
-        income = org["level"] * 500
-        accumulated = min(int(((now - org["last_collect"]) / 3600) * income), income * 24)
-        data = {"name": org["name"], "org_type": org["org_type"], "sphere": org["sphere"], "logo_url": org["logo_url"], "income": income, "acc": accumulated, "balance": org["balance"], "level": org["level"], "owner": f"ID: {org['owner_id']}"}
+        accumulated = min(int(((now - org["last_collect"]) / 3600) * (org["level"] * 500)), (org["level"] * 500) * 24)
+        
+        data = {
+            "name": org["name"], "org_type": org["org_type"], "sphere": org["sphere"],
+            "logo_url": org["logo_url"], "income": org["level"] * 500, "acc": accumulated,
+            "balance": org["balance"], "level": org["level"], "owner": f"ID: {org['owner_id']}"
+        }
         png = await render_template("organization.html", data)
-        await interaction.followup.send(file=discord.File(fp=io.BytesIO(png), filename="org.png"), view=OrgActions(self.bot, org_id, is_admin=self.is_admin), ephemeral=True)
+        file = discord.File(fp=io.BytesIO(png), filename="org.png")
+        
+        view = OrgActions(self.bot, org_id, is_admin_view=self.is_admin_view)
+        await interaction.followup.send(file=file, view=view, ephemeral=True)
 
+
+class OrgSelectView(discord.ui.View):
+    def __init__(self, bot, user, is_admin: bool, view_all: bool, orgs: list):
+        super().__init__(timeout=180)
+        self.bot = bot
+        self.user = user
+        self.is_admin = is_admin
+        self.view_all = view_all
+        
+        if orgs:
+            self.add_item(OrgSelectMenu(orgs, self.bot, self.is_admin or self.view_all))
+
+        # Если это админ, добавляем кнопку переключения
+        if self.is_admin:
+            btn_label = "👤 Мои организации" if self.view_all else "🌐 Все организации"
+            btn_style = discord.ButtonStyle.secondary if self.view_all else discord.ButtonStyle.primary
+            btn = discord.ui.Button(label=btn_label, style=btn_style, row=1)
+            btn.callback = self.toggle_view
+            self.add_item(btn)
+
+    async def toggle_view(self, interaction: discord.Interaction):
+        self.view_all = not self.view_all
+        if self.view_all:
+            orgs = await self.bot.db.get_all_organizations()
+        else:
+            orgs = await self.bot.db.get_user_organizations(self.user.id)
+        
+        # Пересоздаем View с новыми данными
+        new_view = OrgSelectView(self.bot, self.user, self.is_admin, self.view_all, orgs)
+        await interaction.response.edit_message(view=new_view)
+
+
+# ─── КОМАНДА /org ───
 class Organization(commands.Cog):
     def __init__(self, bot): self.bot = bot
 
     @app_commands.command(name="org", description="Меню управления организациями")
     async def org(self, i: discord.Interaction):
         is_admin = i.user.guild_permissions.administrator or i.user.id == i.guild.owner_id
-        orgs = await self.bot.db.get_all_organizations() if is_admin else await self.bot.db.get_user_organizations(i.user.id)
+        orgs = await self.bot.db.get_user_organizations(i.user.id)
         
-        if not orgs: return await i.response.send_message("Организаций не найдено.", ephemeral=True)
-        
-        if len(orgs) == 1:
+        if not orgs and not is_admin:
+            return await i.response.send_message("У вас нет организаций. Подайте заявку через панель!", ephemeral=True)
+
+        # Если у обычного игрока только одна организация, сразу открываем её
+        if len(orgs) == 1 and not is_admin:
             org = orgs[0]
             await i.response.defer(ephemeral=True)
             now = time.time()
-            income = org["level"] * 500
-            accumulated = min(int(((now - org["last_collect"]) / 3600) * income), income * 24)
-            data = {"name": org["name"], "org_type": org["org_type"], "sphere": org["sphere"], "logo_url": org["logo_url"], "income": income, "acc": accumulated, "balance": org["balance"], "level": org["level"], "owner": f"ID: {org['owner_id']}"}
+            accumulated = min(int(((now - org["last_collect"]) / 3600) * (org["level"] * 500)), (org["level"] * 500) * 24)
+            data = {
+                "name": org["name"], "org_type": org["org_type"], "sphere": org["sphere"], "logo_url": org["logo_url"],
+                "income": org["level"] * 500, "acc": accumulated, "balance": org["balance"], "level": org["level"], "owner": f"ID: {org['owner_id']}"
+            }
             png = await render_template("organization.html", data)
-            await i.followup.send(file=discord.File(fp=io.BytesIO(png), filename="org.png"), view=OrgActions(self.bot, org["org_id"], is_admin=is_admin), ephemeral=True)
+            file = discord.File(fp=io.BytesIO(png), filename="org.png")
+            await i.followup.send(file=file, view=OrgActions(self.bot, org["org_id"], is_admin_view=False), ephemeral=True)
         else:
-            view = discord.ui.View()
-            view.add_item(OrgSelect(orgs, self.bot, is_admin))
+            # Если это админ или у игрока несколько орг, показываем меню
+            view = OrgSelectView(self.bot, i.user, is_admin, view_all=False, orgs=orgs)
             await i.response.send_message("Выберите организацию:", view=view, ephemeral=True)
 
 async def setup(bot): await bot.add_cog(Organization(bot))

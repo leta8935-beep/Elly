@@ -1,8 +1,19 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from urllib.parse import urlparse
 
 def fmt(n: int) -> str: return f"{n:,}".replace(",", " ")
+
+def is_valid_url(url):
+    """Проверяет, является ли строка валидной ссылкой (http/https)."""
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        result = urlparse(url.strip())
+        return all([result.scheme, result.netloc])
+    except ValueError:
+        return False
 
 class Economy(commands.Cog):
     def __init__(self, bot):
@@ -28,10 +39,18 @@ class Economy(commands.Cog):
         )
         embed.set_author(name=target.display_name, icon_url=target.display_avatar.url)
         
+        # --- ЛОГИКА ФУТЕРА (ЕСЛИ НЕТ ПАСПОРТА) ---
         if p:
-            embed.set_footer(text=f"{p['surname']} {p['name']}", icon_url=p["photo_url"])
+            full_name = f"{p['surname']} {p['name']}"
+            photo = p.get("photo_url", "")
+            
+            if is_valid_url(photo):
+                embed.set_footer(text=full_name, icon_url=photo.strip())
+            else:
+                embed.set_footer(text=full_name)
         else:
-            embed.set_footer(text="Нет паспорта", icon_url=i.guild.me.display_avatar.url)
+            # Если нет паспорта, просто пишем текст, без иконки
+            embed.set_footer(text="Нету персонажа")
 
         await i.response.send_message(embed=embed, ephemeral=(target.id == i.user.id))
 

@@ -1,5 +1,7 @@
-.env
-__pycache__/
-*.pyc
-venv/
-.venv/
+# --- Локальные файлы для деплоя ---
+deploy.py
+*.bat
+*.exe
+*.spec
+dist/
+build/
