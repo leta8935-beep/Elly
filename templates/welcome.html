@@ -2,55 +2,78 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=IBM+Plex+Mono:wght@300;400;500&family=Caveat:wght@400;600&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box}
-html,body{margin:0;width:1200px;height:630px;overflow:hidden}
-body{font-family:Inter,Arial,sans-serif;background:#090d18;color:#fff}
-.bg{position:absolute;inset:0;background:
- radial-gradient(circle at 82% 18%,rgba(95,92,255,.42),transparent 30%),
- radial-gradient(circle at 15% 88%,rgba(0,210,255,.22),transparent 34%),
- linear-gradient(135deg,#090d18,#10172a 55%,#15112d)}
-.grid{position:absolute;inset:0;opacity:.13;background-image:linear-gradient(rgba(255,255,255,.22) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.22) 1px,transparent 1px);background-size:40px 40px}
-.card{position:absolute;left:52px;right:52px;top:46px;bottom:46px;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.075);border-radius:34px;padding:42px 48px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
-.top{display:flex;align-items:center;gap:24px}
-.server{width:74px;height:74px;border-radius:22px;object-fit:cover;border:2px solid rgba(255,255,255,.2)}
-.serverName{font-size:20px;font-weight:700;color:#b8c0d8}
-.title{margin-top:58px;font-size:58px;line-height:1;font-weight:900;letter-spacing:-2px}
-.title span{background:linear-gradient(90deg,#fff,#b9b7ff);-webkit-background-clip:text;color:transparent}
-.subtitle{margin-top:18px;font-size:24px;color:#aab3c9}
-.member{position:absolute;right:48px;bottom:38px;display:flex;align-items:center;gap:18px}
-.avatar{width:118px;height:118px;border-radius:38px;object-fit:cover;border:4px solid rgba(255,255,255,.2);box-shadow:0 12px 35px rgba(0,0,0,.35)}
-.name{font-size:26px;font-weight:800}.count{font-size:16px;color:#aab3c9;margin-top:7px}
-.accent{position:absolute;width:210px;height:210px;border-radius:50%;right:-80px;top:-80px;background:rgba(119,102,255,.22);filter:blur(10px)}
+  :root {
+    --bg: #0b0e13; --cream: #e2dbcb; --cream-dim: #b8b0a0; --paper: #cfc7b5;
+    --text: #e6e1d3; --text-mute: #a09888; --bg-brightness: 0.85;
+    --bg-saturation: 0.72; --scrim-top: 0.35; --scrim-end: 0.93;
+    --content-shift: 40px; --content-gap: 48px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #05070a; display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; }
+  .stage { display: flex; flex-direction: column; align-items: flex-start; }
+  .card { position: relative; width: 1200px; height: 520px; overflow: hidden; background: var(--bg); box-shadow: 0 40px 100px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.04); isolation: isolate; }
+  .photo-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; z-index: 0; filter: sepia(0.18) contrast(1.03) brightness(var(--bg-brightness)) saturate(var(--bg-saturation)) hue-rotate(-4deg); }
+  .grade { position: absolute; inset: 0; background: linear-gradient(135deg, #334152 0%, #352c20 100%); mix-blend-mode: soft-light; opacity: 0.55; z-index: 1; }
+  .vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 45% 50%, transparent 30%, rgba(8,11,15,0.28) 65%, rgba(5,8,12,0.70) 100%); z-index: 2; }
+  .scanlines { position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(0,0,0,0.20) 3px, rgba(0,0,0,0.20) 4px); opacity: 0.30; z-index: 3; }
+  .grain { position: absolute; inset: 0; opacity: 0.13; mix-blend-mode: overlay; z-index: 4; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .text-scrim { position: absolute; inset: 0; z-index: 5; background: linear-gradient(95deg, transparent 0%, transparent 30%, rgba(9,12,16,calc(var(--scrim-top)*0.7)) 36%, rgba(9,12,16,var(--scrim-top)) 44%, rgba(9,12,16,calc(var(--scrim-top)*1.6)) 56%, rgba(9,12,16,0.78) 72%, rgba(9,12,16,var(--scrim-end)) 100%); }
+  .content { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; gap: var(--content-gap); padding: 0 96px; transform: translateX(var(--content-shift)); }
+  .photo-block { flex-shrink: 0; position: relative; width: 224px; padding: 12px 12px 52px; background: var(--paper); transform: rotate(-2deg); box-shadow: 0 24px 50px rgba(0,0,0,0.75), 0 6px 14px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.28); }
+  .tape { position: absolute; width: 62px; height: 22px; background: linear-gradient(180deg, rgba(240,232,214,0.55), rgba(224,214,192,0.42)); border-top: 1px solid rgba(255,255,255,0.25); border-bottom: 1px solid rgba(0,0,0,0.25); box-shadow: 0 2px 5px rgba(0,0,0,0.35), inset 0 0 8px rgba(255,255,255,0.15); z-index: 3; }
+  .tape-1 { top: -12px; left: 22px; transform: rotate(-9deg); }
+  .tape-2 { top: -12px; right: 22px; transform: rotate(7deg); }
+  .photo-img { width: 100%; height: 194px; object-fit: cover; display: block; filter: contrast(1.05) saturate(0.78) brightness(0.88) sepia(0.14); }
+  .photo-caption { position: absolute; bottom: 12px; left: 14px; right: 14px; font-family: 'Caveat', cursive; font-size: 23px; font-weight: 600; color: #3d3222; text-align: center; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .text-block { flex: 0 1 600px; min-width: 0; }
+  .title { font-family: 'Playfair Display', serif; font-size: 30px; font-weight: 400; line-height: 1.2; color: var(--cream-dim); letter-spacing: 0.5px; margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.98), 0 3px 18px rgba(0,0,0,0.85); }
+  .name { font-family: 'Playfair Display', serif; font-size: 62px; font-weight: 500; font-style: italic; line-height: 1; letter-spacing: -0.5px; color: var(--cream); margin-bottom: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 2px 4px rgba(0,0,0,0.95), 0 6px 28px rgba(0,0,0,0.9), 0 0 70px rgba(0,0,0,0.65); }
+  .sub { font-family: 'Playfair Display', serif; font-size: 18px; font-style: italic; font-weight: 400; color: #b0a899; margin-bottom: 28px; text-shadow: 0 1px 3px rgba(0,0,0,0.98), 0 2px 14px rgba(0,0,0,0.85); }
+  .sub strong { color: var(--cream); font-weight: 500; font-style: normal; }
+  .divider { width: 100%; max-width: 360px; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,0.28), transparent); margin-bottom: 22px; }
+  .meta-bottom { font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 2px; color: var(--text-mute); text-transform: uppercase; text-shadow: 0 1px 3px rgba(0,0,0,1); }
 </style>
 </head>
 <body>
-<div class="bg"></div><div class="grid"></div>
-<div class="card">
-  <div class="accent"></div>
-  <div class="top">
-    <img id="server" class="server" src="">
-    <div class="serverName" id="serverName">Сервер</div>
-  </div>
-  <div class="title">Добро пожаловать,<br><span id="memberName">Игрок</span>!</div>
-  <div class="subtitle">Рады видеть тебя в нашем государстве. Осваивайся и приятной игры ✨</div>
-  <div class="member">
-    <div>
-      <div class="name" id="name2">Игрок</div>
-      <div class="count" id="count">Участник №1</div>
+<div class="stage">
+  <div class="card">
+    <img class="photo-bg" id="photoBg" src="" alt="">
+    <div class="grade"></div>
+    <div class="vignette"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+    <div class="text-scrim"></div>
+    <div class="content">
+      <div class="photo-block">
+        <span class="tape tape-1"></span>
+        <span class="tape tape-2"></span>
+        <img class="photo-img" id="avatar" src="" alt="">
+        <div class="photo-caption" id="usernameCap">User</div>
+      </div>
+      <div class="text-block">
+        <div class="title">Добро пожаловать,</div>
+        <div class="name" id="usernameText">User</div>
+        <div class="sub">на сервер <strong id="serverName">Server</strong></div>
+        <div class="divider"></div>
+        <div class="meta-bottom">
+          <span class="num" id="memberCount">0</span> участник
+        </div>
+      </div>
     </div>
-    <img id="avatar" class="avatar" src="">
   </div>
 </div>
 <script>
-window.renderData=(d)=>{
-  document.getElementById('server').src=d.server_icon||'';
-  document.getElementById('serverName').textContent=d.server_name||'Наш сервер';
-  document.getElementById('memberName').textContent=d.member_name||'Игрок';
-  document.getElementById('name2').textContent=d.member_name||'Игрок';
-  document.getElementById('count').textContent='Участников на сервере: '+(d.member_count||0);
-  document.getElementById('avatar').src=d.avatar||'';
-}
+  window.renderData = (data) => {
+    // Просто ставим готовую ссылку, которую прислал Python
+    document.getElementById('photoBg').src = data.bg_url;
+    document.getElementById('avatar').src = data.avatar_url;
+    document.getElementById('usernameCap').innerText = data.username;
+    document.getElementById('usernameText').innerText = data.username;
+    document.getElementById('serverName').innerText = data.server_name;
+    document.getElementById('memberCount').innerText = data.member_count;
+  };
 </script>
 </body>
 </html>

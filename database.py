@@ -6,13 +6,12 @@ class Database:
         self.pool = None
 
     async def connect(self):
-        # Отключаем кэш для совместимости с пулером Supabase
         self.pool = await asyncpg.create_pool(
             self.dsn, min_size=1, max_size=5,
-            statement_cache_size=0, max_cached_statement_lifetime=0
+            statement_cache_size=0, max_cached_statement_lifetime=0,
+            command_timeout=10, timeout=10
         )
         async with self.pool.acquire() as c:
-            # Основные таблицы
             await c.execute("""
             CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, wallet BIGINT NOT NULL DEFAULT 500);
             CREATE TABLE IF NOT EXISTS transactions (id SERIAL PRIMARY KEY, from_id BIGINT, to_id BIGINT, amount BIGINT NOT NULL, kind TEXT NOT NULL);
@@ -33,7 +32,7 @@ class Database:
             );
             """)
             
-            # Безопасное добавление колонок для настроек
+            # Добавление всех нужных колонок
             await c.execute("ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS state_name TEXT DEFAULT 'РОССИЙСКАЯ ФЕДЕРАЦИЯ';")
             await c.execute("ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS state_name_en TEXT DEFAULT 'RUSSIAN FEDERATION';")
             await c.execute("ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS state_code TEXT DEFAULT 'RUS';")
@@ -43,6 +42,8 @@ class Database:
             await c.execute("ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS mod_role BIGINT;")
             await c.execute("ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS admin_role BIGINT;")
             await c.execute("ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS pr_role BIGINT;")
+            await c.execute("ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS chatbot_channel_id BIGINT;")
+            await c.execute("ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS welcome_channel_id BIGINT;")
 
     # ─── Экономика ───
     async def get_user(self, user_id: int):
@@ -115,7 +116,8 @@ class Database:
             await c.execute("""
                 INSERT INTO passports (user_id, surname, name, patronymic, dob, pob, bio, photo_url)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-                ON CONFLICT (user_id) DO UPDATE SET surname=$2, name=$3, patronymic=$4, dob=$5, pob=$6, bio=$7, photo_url=$8
+                ON CONFLICT (user_id) DO UPDATE SET 
+                surname=$2, name=$3, patronymic=$4, dob=$5, pob=$6, bio=$7, photo_url=$8
             """, user_id, surname, name, patronymic, dob, pob, bio, photo_url)
 
     async def get_passport(self, user_id: int):
@@ -129,15 +131,21 @@ class Database:
             await c.execute(f"UPDATE passports SET {field}=$1 WHERE user_id=$2", value, user_id)
         return True
 
-    # ─── Настройки ───
+    # ─── Настройки сервера ───
     async def set_guild_setting(self, guild_id: int, column: str, value):
-        allowed = ["review_channel_id", "start_roles", "curator_role", "mod_role", "admin_role", "pr_role", "manager_id", "state_name", "state_name_en", "state_code", "currency"]
+        allowed = [
+            "review_channel_id", "start_roles", "curator_role", "mod_role", 
+            "admin_role", "pr_role", "manager_id", "state_name", "state_name_en", 
+            "state_code", "currency", "chatbot_channel_id", "welcome_channel_id"
+        ]
         if column not in allowed: return
         async with self.pool.acquire() as c:
             exists = await c.fetchval("SELECT 1 FROM guild_settings WHERE guild_id=$1", guild_id)
-            if not exists: await c.execute("INSERT INTO guild_settings (guild_id) VALUES ($1)", guild_id)
+            if not exists: 
+                await c.execute("INSERT INTO guild_settings (guild_id) VALUES ($1)", guild_id)
             await c.execute(f"UPDATE guild_settings SET {column}=$1 WHERE guild_id=$2", value, guild_id)
 
+    # 🔥 ВОТ ЕГО НЕ ХВАТАЛО! 🔥
     async def get_guild_settings(self, guild_id: int):
         async with self.pool.acquire() as c:
             return await c.fetchrow("SELECT * FROM guild_settings WHERE guild_id=$1", guild_id)

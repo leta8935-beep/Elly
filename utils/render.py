@@ -1,72 +1,39 @@
-import asyncio
-import json
 import pathlib
+import json
 from playwright.async_api import async_playwright
 
-# One browser per bot process. Starting Chromium for every passport/welcome
-# was the main source of long waits and resource leaks.
-_playwright = None
-_browser = None
-_lock = asyncio.Lock()
-
-
-async def _get_browser():
-    global _playwright, _browser
-    async with _lock:
-        if _browser and _browser.is_connected():
-            return _browser
-        _playwright = await async_playwright().start()
-        _browser = await _playwright.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
-        return _browser
-
-
-async def _render_template(template_name: str, data: dict) -> bytes:
-    tpl_path = pathlib.Path(__file__).parent.parent / "templates" / template_name
-    browser = await _get_browser()
-    context = await browser.new_context(
-        viewport={"width": 720, "height": 1000},
-        device_scale_factor=2,
-    )
-    page = await context.new_page()
-    try:
-        await page.goto(tpl_path.resolve().as_uri(), wait_until="domcontentloaded", timeout=5000)
-        await page.evaluate(
-            "window.renderData && window.renderData(%s)" % json.dumps(data, ensure_ascii=False)
-        )
-        # Не используем networkidle: внешние картинки/шрифты могут держать
-        # сеть занятой бесконечно. Локального шаблона достаточно.
-        try:
-            await page.wait_for_timeout(200)
-            await page.wait_for_function(
-                "document.fonts ? document.fonts.status !== 'loading' : true",
-                timeout=800,
-            )
-        except Exception:
-            pass
-        return await page.locator("body").screenshot(timeout=4000)
-    finally:
-        await context.close()
-
-
 async def render_template(template_name: str, data: dict) -> bytes:
-    # Жёсткий общий лимит: Discord-команда не должна зависать из-за Chromium.
-    return await asyncio.wait_for(_render_template(template_name, data), timeout=12)
+    tpl_path = pathlib.Path(__file__).parent.parent / "templates" / template_name
+    
+    if "passport" in template_name:
+        viewport = {"width": 720, "height": 1000}
+    elif "welcome" in template_name:
+        viewport = {"width": 1200, "height": 520}
+    elif "organization" in template_name:
+        viewport = {"width": 900, "height": 500}
+    else:
+        viewport = {"width": 1200, "height": 800}
 
-
-async def shutdown():
-    global _browser, _playwright
-    if _browser:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(args=["--no-sandbox"])
+        context = await browser.new_context(
+            viewport=viewport,
+            device_scale_factor=2
+        )
+        page = await context.new_page()
+        
+        await page.goto(f"file://{tpl_path.resolve()}")
+        await page.evaluate(f"window.renderData({json.dumps(data)})")
+        
         try:
-            await _browser.close()
-        except Exception:
+            # ИСПРАВЛЕНО: для welcome даем больше времени
+            timeout = 10000 if "welcome" in template_name else 5000
+            await page.wait_for_load_state("networkidle", timeout=timeout)
+        except:
             pass
-        _browser = None
-    if _playwright:
-        try:
-            await _playwright.stop()
-        except Exception:
-            pass
-        _playwright = None
+            
+        await page.wait_for_timeout(500) 
+        
+        png_bytes = await page.screenshot()
+        await browser.close()
+        return png_bytes

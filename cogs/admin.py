@@ -5,6 +5,7 @@ from utils.checks import is_staff
 
 def fmt(n: int) -> str: return f"{n:,}".replace(",", " ")
 
+# ─── Модалки для бюджета ───
 class AdminOrgModal(discord.ui.Modal):
     amount = discord.ui.TextInput(label="Сумма", placeholder="1000", max_length=12)
 
@@ -28,7 +29,6 @@ class AdminOrgModal(discord.ui.Modal):
         elif self.action == "set":
             await self.bot.db.update_organization(self.org_id, balance=amt)
             await interaction.response.send_message(f"✅ Бюджет изменен на {fmt(amt)}.", ephemeral=True)
-
 
 class AdminOrgActionView(discord.ui.View):
     def __init__(self, bot, org_id):
@@ -56,6 +56,38 @@ class AdminOrgSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         org_id = int(self.values[0])
         await interaction.response.send_message("Выберите действие с бюджетом:", view=AdminOrgActionView(self.bot, org_id), ephemeral=True)
+
+# ─── Удаление организаций ───
+class ConfirmDeleteView(discord.ui.View):
+    def __init__(self, bot, org_id, org_name):
+        super().__init__(timeout=60)
+        self.bot = bot
+        self.org_id = org_id
+        self.org_name = org_name
+
+    @discord.ui.button(label="Да, удалить", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.bot.db.delete_organization(self.org_id)
+        await interaction.response.edit_message(content=f"🗑️ Организация **{self.org_name}** успешно удалена.", view=None)
+
+    @discord.ui.button(label="Отмена", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Удаление отменено.", view=None)
+
+class DeleteOrgSelect(discord.ui.Select):
+    def __init__(self, bot, orgs):
+        options = [discord.SelectOption(label=o['name'], value=str(o['org_id'])) for o in orgs]
+        super().__init__(placeholder="Выберите организацию для удаления...", options=options)
+        self.bot = bot
+
+    async def callback(self, interaction: discord.Interaction):
+        org_id = int(self.values[0])
+        # Получаем название по выбранному ID
+        org_name = next((o.label for o in self.options if o.value == self.values[0]), "Неизвестно")
+        await interaction.response.edit_message(
+            content=f"⚠️ Вы уверены, что хотите удалить **{org_name}**?", 
+            view=ConfirmDeleteView(self.bot, org_id, org_name)
+        )
 
 class Admin(commands.Cog):
     def __init__(self, bot):
@@ -90,6 +122,17 @@ class Admin(commands.Cog):
         view = discord.ui.View()
         view.add_item(AdminOrgSelect(self.bot, orgs))
         await i.response.send_message("Выберите организацию для управления бюджетом:", view=view, ephemeral=True)
+
+    @app_commands.command(name="delete_org", description="[STAFF] Удалить организацию")
+    @is_staff()
+    async def delete_org(self, i: discord.Interaction):
+        orgs = await self.bot.db.get_all_organizations()
+        if not orgs:
+            return await i.response.send_message("На сервере нет организаций.", ephemeral=True)
+        
+        view = discord.ui.View()
+        view.add_item(DeleteOrgSelect(self.bot, orgs))
+        await i.response.send_message("Выберите организацию, которую хотите удалить:", view=view, ephemeral=True)
 
     @app_commands.command(name="create_org", description="[STAFF] Создать организацию для игрока")
     @is_staff()
