@@ -10,7 +10,9 @@ def fmt(n: int) -> str:
     return f"{n:,}".replace(",", " ")
 
 
-# ─── Модалки бюджета ───
+# ══════════════════════════════════════════════════════════════════════
+#   МОДАЛКИ / VIEW ДЛЯ БЮДЖЕТА ОРГАНИЗАЦИЙ
+# ══════════════════════════════════════════════════════════════════════
 class AdminOrgModal(discord.ui.Modal):
     amount = discord.ui.TextInput(label="Сумма", placeholder="1000", max_length=12)
 
@@ -148,11 +150,16 @@ class DeleteOrgSelect(discord.ui.Select):
         )
 
 
+# ══════════════════════════════════════════════════════════════════════
+#   COG
+# ══════════════════════════════════════════════════════════════════════
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ✅ /addmon — бывшая economy_admin
+    # ──────────────────────────────────────────────────────────────
+    #   /addmon — управление балансом игроков
+    # ──────────────────────────────────────────────────────────────
     @app_commands.command(
         name="addmon", description="[STAFF] Управление балансом игроков"
     )
@@ -204,7 +211,82 @@ class Admin(commands.Cog):
         )
         await send_log(self.bot, i.guild_id, log_embed)
 
-    # ✅ /addmonorg — бывшая admin_org
+    # ──────────────────────────────────────────────────────────────
+    #   /force_register — ручная регистрация участника
+    # ──────────────────────────────────────────────────────────────
+    @app_commands.command(
+        name="force_register",
+        description="[STAFF] Зарегистрировать участника вручную",
+    )
+    @app_commands.describe(
+        member="Участник, которого нужно зарегистрировать",
+        surname="Фамилия",
+        name="Имя",
+        patronymic="Отчество (необязательно)",
+        dob="Дата рождения (необязательно)",
+        pob="Место рождения (необязательно)",
+        bio="Биография (необязательно)",
+        photo_url="Ссылка на фото (необязательно)",
+    )
+    @is_staff()
+    async def force_register(
+        self,
+        i: discord.Interaction,
+        member: discord.Member,
+        surname: str,
+        name: str,
+        patronymic: str = "—",
+        dob: str = "01.01.2000",
+        pob: str = "—",
+        bio: str = "—",
+        photo_url: str = "",
+    ):
+        existing = await self.bot.db.get_passport(member.id)
+        if existing:
+            return await i.response.send_message(
+                f"❌ У {member.mention} уже есть паспорт.", ephemeral=True
+            )
+
+        await self.bot.db.get_user(member.id)
+        await self.bot.db.save_passport(
+            member.id, surname, name, patronymic, dob, pob, bio, photo_url
+        )
+
+        # Выдаём стартовые роли, если настроены
+        settings = await self.bot.db.get_guild_settings(i.guild.id)
+        if settings and settings["start_roles"]:
+            role_ids = [r.strip() for r in str(settings["start_roles"]).split(",") if r.strip()]
+            roles = [
+                i.guild.get_role(int(r)) for r in role_ids if r.isdigit()
+            ]
+            roles = [r for r in roles if r]
+            if roles:
+                try:
+                    await member.add_roles(
+                        *roles, reason=f"Ручная регистрация ({i.user})"
+                    )
+                except discord.Forbidden:
+                    pass
+
+        await i.response.send_message(
+            f"✅ {member.mention} успешно зарегистрирован вручную.",
+            ephemeral=True,
+        )
+
+        log_embed = discord.Embed(
+            title="📝 Ручная регистрация",
+            color=0xEB459E,
+            description=(
+                f"**Администратор:** {i.user.mention}\n"
+                f"**Участник:** {member.mention} (`{member.id}`)\n"
+                f"**ФИО:** {surname} {name} {patronymic}"
+            ),
+        )
+        await send_log(self.bot, i.guild_id, log_embed)
+
+    # ──────────────────────────────────────────────────────────────
+    #   /addmonorg — управление бюджетами организаций
+    # ──────────────────────────────────────────────────────────────
     @app_commands.command(
         name="addmonorg", description="[STAFF] Управление бюджетами организаций"
     )
@@ -221,6 +303,9 @@ class Admin(commands.Cog):
             "Выберите организацию для управления бюджетом:", view=view, ephemeral=True
         )
 
+    # ──────────────────────────────────────────────────────────────
+    #   /delete_org
+    # ──────────────────────────────────────────────────────────────
     @app_commands.command(name="delete_org", description="[STAFF] Удалить организацию")
     @is_staff()
     async def delete_org(self, i: discord.Interaction):
@@ -235,6 +320,9 @@ class Admin(commands.Cog):
             "Выберите организацию, которую хотите удалить:", view=view, ephemeral=True
         )
 
+    # ──────────────────────────────────────────────────────────────
+    #   /create_org
+    # ──────────────────────────────────────────────────────────────
     @app_commands.command(
         name="create_org", description="[STAFF] Создать организацию для игрока"
     )
@@ -267,6 +355,9 @@ class Admin(commands.Cog):
         )
         await send_log(self.bot, i.guild_id, log_embed)
 
+    # ──────────────────────────────────────────────────────────────
+    #   /purge
+    # ──────────────────────────────────────────────────────────────
     @app_commands.command(name="purge", description="[STAFF] Очистить сообщения")
     @is_staff()
     async def purge(self, i: discord.Interaction, amount: int):
@@ -276,7 +367,10 @@ class Admin(commands.Cog):
         deleted = await i.channel.purge(limit=amount)
         await i.followup.send(f"🧹 Удалено {len(deleted)} сообщений.", ephemeral=True)
 
-    async def cog_app_command_error(self, i, error):
+    # ──────────────────────────────────────────────────────────────
+    #   Обработка ошибок
+    # ──────────────────────────────────────────────────────────────
+    async def cog_app_command_error(self, i: discord.Interaction, error):
         if isinstance(error, app_commands.CheckFailure):
             await i.response.send_message(f"⛔ {error}", ephemeral=True)
 
