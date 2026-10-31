@@ -15,7 +15,8 @@ COGS = [
     "cogs.admin", 
     "cogs.settings",
     "cogs.registration",
-    "cogs.welcome" # <-- Добавили приветствия
+    "cogs.welcome",
+    "cogs.export"
 ]
 
 class Elly(commands.Bot):
