@@ -3,110 +3,336 @@
 <head>
     <meta charset="UTF-8">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=PT+Serif:ital@0;1&display=swap');
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Lora:ital,wght@0,400;0,500;1,400&family=Montserrat:wght@400;500;600&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: 'PT Serif', serif;
-            background: #fff;
-            color: #1a1a1a;
-            padding: 20mm 18mm;
+            background: #525659; /* Темный фон нужен только для предпросмотра */
+            font-family: 'Lora', serif;
+            display: flex;
+            justify-content: center;
         }
-        .header { text-align: center; border-bottom: 2px solid #1A2B4C; padding-bottom: 12px; margin-bottom: 20px; }
-        .header h1 {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 14px; letter-spacing: 4px;
-            color: #1A2B4C; text-transform: uppercase;
+
+        /* Лист А4 */
+        .a4-page {
+            width: 210mm;
+            height: 297mm;
+            background: #ffffff;
+            padding: 15mm;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
-        .header h2 {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 32px; letter-spacing: 10px;
-            color: #1A2B4C; margin-top: 6px;
+
+        /* Элегантная тонкая рамка */
+        .frame {
+            position: absolute;
+            top: 10mm; left: 10mm; right: 10mm; bottom: 10mm;
+            border: 1px solid rgba(184, 147, 90, 0.4); /* Золотой цвет */
+            pointer-events: none;
+            z-index: 10;
         }
+
+        /* Внутренняя легкая тень для объема */
+        .frame::before {
+            content: '';
+            position: absolute;
+            top: 3px; left: 3px; right: 3px; bottom: 3px;
+            border: 1px solid rgba(10, 28, 58, 0.05); /* Едва заметный синий */
+        }
+
+        /* Стильные угловые акценты */
+        .corner {
+            position: absolute;
+            width: 18px; height: 18px;
+            border: 2px solid #0A1C3A; /* Темно-синий */
+            z-index: 15;
+        }
+        .top-left { top: 8mm; left: 8mm; border-right: none; border-bottom: none; }
+        .top-right { top: 8mm; right: 8mm; border-left: none; border-bottom: none; }
+        .bottom-left { bottom: 8mm; left: 8mm; border-right: none; border-top: none; }
+        .bottom-right { bottom: 8mm; right: 8mm; border-left: none; border-top: none; }
+
+        /* Контентная часть */
+        .content-wrapper {
+            position: relative;
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            padding: 15mm 15mm 10mm 15mm;
+        }
+
+        /* Шапка */
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .header .state-name {
+            font-family: 'Cinzel', serif;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 8px;
+            color: #0A1C3A;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+
+        .header .act-type {
+            font-family: 'Cinzel', serif;
+            font-size: 42px;
+            font-weight: 500;
+            letter-spacing: 15px;
+            color: #0A1C3A;
+            text-transform: uppercase;
+            margin-left: 15px;
+        }
+
+        /* Элегантный разделитель с ромбом */
+        .divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 15px 0 30px;
+        }
+        
+        .divider-line {
+            height: 1px;
+            flex: 1;
+            background: linear-gradient(90deg, transparent, #B8935A, transparent);
+        }
+        
+        .divider-icon {
+            margin: 0 20px;
+            font-size: 16px;
+            color: #B8935A;
+        }
+
+        /* Метаданные */
         .meta {
-            display: flex; justify-content: space-between;
+            display: flex;
+            justify-content: space-between;
             font-family: 'Montserrat', sans-serif;
-            font-size: 10px; color: #666;
-            text-transform: uppercase; letter-spacing: 1px;
-            margin-bottom: 20px;
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 35px;
+            padding: 0 10px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
         }
+
+        /* Заголовок */
         .title {
-            font-family: 'Montserrat', sans-serif;
-            font-weight: 600; font-size: 15px;
-            text-align: center; color: #1A2B4C;
-            line-height: 1.5; margin-bottom: 25px;
+            font-family: 'Lora', serif;
+            font-weight: 500;
+            font-size: 18px;
+            text-align: center;
+            color: #0A1C3A;
+            line-height: 1.6;
+            margin-bottom: 35px;
+            padding: 0 20px;
         }
-        .content { font-size: 14px; line-height: 1.7; text-align: justify; }
-        .content p { margin-bottom: 12px; text-indent: 25px; }
+
+        /* Основной текст */
+        .content {
+            font-size: 15.5px;
+            line-height: 1.8;
+            text-align: justify;
+            flex-grow: 1;
+            color: #222;
+        }
+
+        .content p {
+            margin-bottom: 15px;
+            text-indent: 30px;
+        }
+
         .content .decree-word {
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 6px;
+            text-align: center;
+            color: #0A1C3A;
+            margin: 35px 0 25px;
+            text-indent: 0;
+            font-size: 18px;
+        }
+
+        /* Списки с красивыми цифрами */
+        .content ol {
+            margin: 0 0 20px 0;
+            padding-left: 35px;
+            counter-reset: item;
+            list-style-type: none;
+        }
+        
+        .content li {
+            margin-bottom: 12px;
+            padding-left: 10px;
+            position: relative;
+            text-align: justify;
+        }
+
+        .content li::before {
+            content: counter(item) ".";
+            counter-increment: item;
+            position: absolute;
+            left: -25px;
             font-family: 'Montserrat', sans-serif;
-            font-weight: 700; text-transform: uppercase;
-            letter-spacing: 3px; text-align: center;
-            color: #1A2B4C; margin: 20px 0 15px;
+            font-weight: 600;
+            color: #0A1C3A;
         }
-        .content ol { margin: 0 0 15px 0; padding-left: 30px; }
-        .content li { margin-bottom: 8px; }
+
+        /* Блок подписи */
         .signature-block {
-            margin-top: 40px; display: flex;
-            flex-direction: column; align-items: flex-end;
+            margin-top: auto;
+            padding-top: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
         }
+
         .signature-title {
             font-family: 'Montserrat', sans-serif;
-            font-size: 12px; color: #1A2B4C;
-            margin-bottom: 8px; width: 260px;
+            font-size: 12px;
+            color: #0A1C3A;
+            margin-bottom: 25px;
+            text-align: left;
+            width: 300px;
+            line-height: 1.5;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 600;
         }
+
         .signature-area {
-            width: 260px; height: 70px;
-            position: relative; display: flex;
-            align-items: flex-end; justify-content: space-between;
+            width: 300px;
+            height: 80px;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
         }
+
         .signature-img {
-            position: absolute; bottom: 3px; left: 0;
-            height: 60px; width: auto; max-width: 160px;
-            object-fit: contain; mix-blend-mode: multiply;
+            position: absolute;
+            bottom: 5px;
+            left: 10px;
+            height: 75px;
+            width: auto;
+            max-width: 200px;
+            object-fit: contain;
+            mix-blend-mode: multiply;
+            z-index: 10;
         }
-        .signature-line { width: 150px; border-bottom: 1px solid #000; margin-bottom: 4px; }
+
+        .signature-line {
+            width: 180px;
+            border-bottom: 1px solid #0A1C3A;
+            margin-bottom: 5px;
+            position: relative;
+            z-index: 5;
+        }
+
         .signature-name {
             font-family: 'Montserrat', sans-serif;
-            font-size: 14px; font-weight: 700;
-            color: #1A2B4C; letter-spacing: 1px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #0A1C3A;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            text-align: right;
+            width: 100px;
         }
+
+        /* Футер */
         .initiator {
-            margin-top: 20px; font-family: 'Montserrat', sans-serif;
-            font-size: 11px; color: #555; text-align: right;
+            margin-top: 25px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 10px;
+            color: #888;
+            text-align: right;
+            width: 100%;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .initiator strong {
+            color: #0A1C3A;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>{{ state_name }}</h1>
-        <h2>{{ act_type }}</h2>
-    </div>
-    <div class="meta">
-        <span>№ {{ number }}</span>
-        <span>г. {{ state_name }}</span>
-    </div>
-    <div class="title">{{ title }}</div>
-    <div class="content">
-        {{ content | safe }}
-    </div>
-    <div class="signature-block">
-        <div class="signature-title">Глава государства / Должностное лицо</div>
-        <div class="signature-area">
-            {% if signature and signature.startswith('http') %}
-                <img class="signature-img" src="{{ signature }}" alt="Подпись">
-            {% elif signature %}
-                <img class="signature-img" src="data:image/png;base64,{{ signature }}" alt="Подпись">
-            {% else %}
-                <span style="font-family: 'PT Serif', serif; font-style: italic; font-size: 20px; color: #1A2B4C; position: absolute; bottom: 10px; left: 10px;">
-                    {{ fallback_name }}
-                </span>
-            {% endif %}
-            <div class="signature-line"></div>
-            <div class="signature-name">{{ rp_name }}</div>
+    <div class="a4-page">
+        <!-- Рамка и стильные углы -->
+        <div class="frame"></div>
+        <div class="corner top-left"></div>
+        <div class="corner top-right"></div>
+        <div class="corner bottom-left"></div>
+        <div class="corner bottom-right"></div>
+        
+        <div class="content-wrapper">
+            <!-- Шапка -->
+            <div class="header">
+                <div class="state-name">{{ state_name }}</div>
+                <div class="act-type">{{ act_type }}</div>
+            </div>
+            
+            <div class="divider">
+                <div class="divider-line"></div>
+                <div class="divider-icon">❖</div>
+                <div class="divider-line"></div>
+            </div>
+
+            <!-- Метаданные -->
+            <div class="meta">
+                <span>№ {{ number }}</span>
+                <span>г. {{ city }}</span>
+            </div>
+
+            <!-- Заголовок -->
+            <div class="title">{{ title }}</div>
+
+            <!-- Основной текст -->
+            <div class="content">
+                {{ content | safe }}
+            </div>
+
+            <!-- Подпись -->
+            <div class="signature-block">
+                <div class="signature-title">{{ position }}</div>
+                <div class="signature-area">
+                    {% if signature and signature.startswith('http') %}
+                        <img class="signature-img" src="{{ signature }}" alt="Подпись">
+                    {% elif signature %}
+                        <img class="signature-img" src="data:image/png;base64,{{ signature }}" alt="Подпись">
+                    {% else %}
+                        <span style="font-family: 'Lora', serif; font-style: italic; font-size: 24px; color: #0A1C3A; position: absolute; bottom: 15px; left: 10px; opacity: 0.85;">
+                            {{ fallback_name }}
+                        </span>
+                    {% endif %}
+                    <div class="signature-line"></div>
+                    <div class="signature-name">{{ rp_name }}</div>
+                </div>
+            </div>
+
+            <!-- Футер -->
+            <div class="initiator">
+                Инициатор: <strong>{{ initiator_name }}</strong>
+            </div>
         </div>
-    </div>
-    <div class="initiator">
-        Инициатор: <strong>{{ initiator_name }}</strong>
     </div>
 </body>
 </html>

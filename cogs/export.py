@@ -8,7 +8,6 @@ from pathlib import Path
 import discord
 from discord import app_commands
 from discord.ext import commands
-from jinja2 import Environment, FileSystemLoader
 
 from utils.checks import is_staff
 
@@ -42,7 +41,6 @@ def fmt_date(dt: datetime) -> str:
     return f"{dt.day} {months[dt.month - 1]} {dt.year} г."
 
 def process_content(message: discord.Message) -> str:
-    """Конвертирует текст сообщения в HTML."""
     text = escape(message.content or "")
 
     def resolve_user(m):
@@ -68,26 +66,14 @@ def process_content(message: discord.Message) -> str:
         return f'@{escape(name)}'
 
     text = re.sub(r"<@&(\d+)>", resolve_role, text)
-
-    text = re.sub(
-        r"<(a?):([a-zA-Z0-9_]+):(\d+)>",
-        lambda m: (f'[Image 0]'),
-        text,
-    )
-
-    text = re.sub(
-        r"```(?:\w+)?\n?(.+?)```",
-        r'<pre>\1</pre>',
-        text,
-        flags=re.DOTALL,
-    )
-    text = re.sub(r"`([^`]+)`", r'<code>\1</code>', text)
-    text = re.sub(r"\*\*(.+?)\*\*", r'<strong>\1</strong>', text)
-    text = re.sub(r"(?<!\*)\*([^*]+?)\*(?!\*)", r'<em>\1</em>', text)
-    text = re.sub(r"__(.+?)__", r'<u>\1</u>', text)
-    text = re.sub(r"~~(.+?)~~", r'<s>\1</s>', text)
+    text = re.sub(r"<(a?):([a-zA-Z0-9_]+):(\d+)>", lambda m: "[Image 0]", text)
+    text = re.sub(r"```(?:\w+)?\n?(.+?)```", r"<pre>\1</pre>", text, flags=re.DOTALL)
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"(?<!\*)\*([^*]+?)\*(?!\*)", r"<em>\1</em>", text)
+    text = re.sub(r"__(.+?)__", r"<u>\1</u>", text)
+    text = re.sub(r"~~(.+?)~~", r"<s>\1</s>", text)
     text = re.sub(r"(https?://[^\s<]+)", r'<a href="\1">\1</a>', text)
-
     return text
 
 def process_attachments(message: discord.Message) -> str:
@@ -244,20 +230,44 @@ async def html_to_pdf(html: str) -> bytes | None:
         print(f"❌ PDF error: {e}")
         return None
 
-# ─── НОВАЯ ФУНКЦИЯ ДЛЯ РЕНДЕРА УКАЗОВ ───
-async def render_pdf(template_name: str, context: dict) -> bytes:
-    """Рендерит HTML-шаблон через Jinja2 и возвращает PDF-байты."""
+async def html_to_image(html: str) -> bytes | None:
+    """Рендерит HTML в PNG-изображение, вырезая только блок .a4-page."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        print("❌ playwright не установлен — изображение пропущено")
+        return None
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            # Устанавливаем вьюпорт под размер А4 (при 96 DPI это ~794x1123)
+            # device_scale_factor=2 делает картинку в 2 раза четче
+            page = await browser.new_page(viewport={"width": 800, "height": 1150}, device_scale_factor=2)
+            await page.set_content(html, wait_until="networkidle")
+            
+            # Ждем загрузку шрифтов
+            await page.wait_for_timeout(1000)
+            
+            # Ищем наш лист А4 и делаем скриншот ТОЛЬКО его
+            element = await page.query_selector('.a4-page')
+            if element:
+                png = await element.screenshot(type="png")
+            else:
+                # Если класс не найден, делаем обычный скриншот (запасной вариант)
+                png = await page.screenshot(full_page=True, type="png")
+                
+            await browser.close()
+            return png
+    except Exception as e:
+        print(f"❌ Screenshot error: {e}")
+        return None
+
+async def render_html(template_name: str, context: dict) -> str:
+    from jinja2 import Environment, FileSystemLoader
     env = Environment(loader=FileSystemLoader("templates"))
     template = env.get_template(template_name)
-    html = template.render(**context)
-    pdf = await html_to_pdf(html)
-    if pdf is None:
-        raise RuntimeError("Не удалось сгенерировать PDF (Playwright).")
-    return pdf
+    return template.render(**context)
 
-# ══════════════════════════════════════════════════════════════════════
-# COG
-# ══════════════════════════════════════════════════════════════════════
 class ChatExport(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -271,14 +281,79 @@ class ChatExport(commands.Cog):
         limit="Ограничить количество сообщений (0 = все)",
     )
     @is_staff()
-    async def export_command(
+    async def export_cmd(
         self,
-        interaction: discord.Interaction,
+        i: discord.Interaction,
         channel: discord.TextChannel = None,
         limit: int = 0,
     ):
-        # ... (код команды export остаётся без изменений)
-        pass
+        target = channel or i.channel
+        if not isinstance(target, discord.TextChannel):
+            return await i.response.send_message(
+                "❌ Можно экспортировать только текстовые каналы.",
+                ephemeral=True
+            )
+        await i.response.defer(ephemeral=True)
+
+        messages = []
+        try:
+            async for msg in target.history(
+                limit=limit or None,
+                oldest_first=True,
+                before=i.created_at,
+            ):
+                messages.append(msg)
+                if len(messages) % 500 == 0:
+                    await i.edit_original_response(
+                        content=f"Загружено {len(messages)} сообщений..."
+                    )
+        except discord.Forbidden:
+            return await i.edit_original_response(
+                content="❌ Нет доступа к истории этого канала."
+            )
+        except Exception as e:
+            return await i.edit_original_response(
+                content=f"❌ Ошибка загрузки: `{e}`"
+            )
+
+        if not messages:
+            return await i.edit_original_response(content="❌ Канал пуст.")
+
+        await i.edit_original_response(
+            content=f"Генерирую HTML ({len(messages)} сообщений)..."
+        )
+        html = build_html(messages, target.name)
+        html_bytes = html.encode("utf-8")
+        stamp = i.created_at.strftime("%Y%m%d_%H%M")
+        html_file = discord.File(
+            io.BytesIO(html_bytes),
+            filename=f"chat_{target.name}_{stamp}.html",
+        )
+
+        pdf_bytes = await html_to_pdf(html)
+        pdf_file = None
+        if pdf_bytes:
+            pdf_file = discord.File(
+                io.BytesIO(pdf_bytes),
+                filename=f"chat_{target.name}_{stamp}.pdf",
+            )
+
+        try:
+            dm = await i.user.create_dm()
+            await dm.send(
+                f"**Экспорт канала #{target.name}**\n"
+                f"Сообщений: **{len(messages)}**",
+                file=html_file,
+            )
+            if pdf_file:
+                await dm.send(file=pdf_file)
+            await i.edit_original_response(
+                content="✅ Экспорт отправлен вам в личные сообщения."
+            )
+        except discord.Forbidden:
+            await i.edit_original_response(
+                content="❌ Не удалось отправить в ЛС. Откройте личные сообщения."
+            )
 
 async def setup(bot):
     await bot.add_cog(ChatExport(bot))
