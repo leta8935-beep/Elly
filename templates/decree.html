@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=PT+Serif:ital@0;1&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'PT Serif', serif;
+            background: #fff;
+            color: #1a1a1a;
+            padding: 20mm 18mm;
+        }
+        .header { text-align: center; border-bottom: 2px solid #1A2B4C; padding-bottom: 12px; margin-bottom: 20px; }
+        .header h1 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 14px; letter-spacing: 4px;
+            color: #1A2B4C; text-transform: uppercase;
+        }
+        .header h2 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 32px; letter-spacing: 10px;
+            color: #1A2B4C; margin-top: 6px;
+        }
+        .meta {
+            display: flex; justify-content: space-between;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 10px; color: #666;
+            text-transform: uppercase; letter-spacing: 1px;
+            margin-bottom: 20px;
+        }
+        .title {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 600; font-size: 15px;
+            text-align: center; color: #1A2B4C;
+            line-height: 1.5; margin-bottom: 25px;
+        }
+        .content { font-size: 14px; line-height: 1.7; text-align: justify; }
+        .content p { margin-bottom: 12px; text-indent: 25px; }
+        .content .decree-word {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 700; text-transform: uppercase;
+            letter-spacing: 3px; text-align: center;
+            color: #1A2B4C; margin: 20px 0 15px;
+        }
+        .content ol { margin: 0 0 15px 0; padding-left: 30px; }
+        .content li { margin-bottom: 8px; }
+        .signature-block {
+            margin-top: 40px; display: flex;
+            flex-direction: column; align-items: flex-end;
+        }
+        .signature-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 12px; color: #1A2B4C;
+            margin-bottom: 8px; width: 260px;
+        }
+        .signature-area {
+            width: 260px; height: 70px;
+            position: relative; display: flex;
+            align-items: flex-end; justify-content: space-between;
+        }
+        .signature-img {
+            position: absolute; bottom: 3px; left: 0;
+            height: 60px; width: auto; max-width: 160px;
+            object-fit: contain; mix-blend-mode: multiply;
+        }
+        .signature-line { width: 150px; border-bottom: 1px solid #000; margin-bottom: 4px; }
+        .signature-name {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 14px; font-weight: 700;
+            color: #1A2B4C; letter-spacing: 1px;
+        }
+        .initiator {
+            margin-top: 20px; font-family: 'Montserrat', sans-serif;
+            font-size: 11px; color: #555; text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{ state_name }}</h1>
+        <h2>{{ act_type }}</h2>
+    </div>
+    <div class="meta">
+        <span>№ {{ number }}</span>
+        <span>г. {{ state_name }}</span>
+    </div>
+    <div class="title">{{ title }}</div>
+    <div class="content">
+        {{ content | safe }}
+    </div>
+    <div class="signature-block">
+        <div class="signature-title">Глава государства / Должностное лицо</div>
+        <div class="signature-area">
+            {% if signature and signature.startswith('http') %}
+                <img class="signature-img" src="{{ signature }}" alt="Подпись">
+            {% elif signature %}
+                <img class="signature-img" src="data:image/png;base64,{{ signature }}" alt="Подпись">
+            {% else %}
+                <span style="font-family: 'PT Serif', serif; font-style: italic; font-size: 20px; color: #1A2B4C; position: absolute; bottom: 10px; left: 10px;">
+                    {{ fallback_name }}
+                </span>
+            {% endif %}
+            <div class="signature-line"></div>
+            <div class="signature-name">{{ rp_name }}</div>
+        </div>
+    </div>
+    <div class="initiator">
+        Инициатор: <strong>{{ initiator_name }}</strong>
+    </div>
+</body>
+</html>
