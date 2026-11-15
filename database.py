@@ -43,7 +43,7 @@ class Database:
                 );
             """)
             
-            # 2. АВТОМАТИЧЕСКАЯ МИГРАЦИЯ (Убирает NOT NULL со всех колонок, кроме user_id)
+            # 2. АВТОМАТИЧЕСКАЯ МИГРАЦИЯ ПАСПОРТОВ (Убирает NOT NULL)
             try:
                 await conn.execute("""
                     DO $$
@@ -61,9 +61,9 @@ class Database:
                         END LOOP;
                     END $$;
                 """)
-                logger.info("Миграция: все старые ограничения NOT NULL успешно сняты.")
+                logger.info("Миграция паспортов: ограничения NOT NULL сняты.")
             except Exception as e:
-                logger.warning(f"Миграция не требуется или произошла ошибка: {e}")
+                logger.warning(f"Миграция паспортов: {e}")
             
             # Добавляем колонку для подписи, если ее еще нет
             await conn.execute("""
@@ -89,13 +89,19 @@ class Database:
                 );
             """)
 
-            # 5. НОВАЯ ТАБЛИЦА: Настройки серверов (для decree.py и других)
+            # 5. ТАБЛИЦА: Настройки серверов
+            # Создаем, если нет
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS guild_settings (
                     guild_id BIGINT PRIMARY KEY,
                     settings JSONB DEFAULT '{}'::jsonb
                 );
             """)
+            # ПРИНУДИТЕЛЬНО добавляем колонку settings, если таблица старая и в ней её нет
+            await conn.execute("""
+                ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}'::jsonb;
+            """)
+            
             logger.info("Таблицы проверены/созданы.")
 
     # ==================== НАСТРОЙКИ СЕРВЕРА ====================
@@ -103,6 +109,9 @@ class Database:
     async def get_guild_settings(self, guild_id: int) -> dict:
         """Получает настройки сервера в виде словаря."""
         async with self.pool.acquire() as conn:
+            # Убедимся, что запись существует, чтобы не было ошибок
+            await conn.execute("INSERT INTO guild_settings (guild_id) VALUES ($1) ON CONFLICT DO NOTHING", guild_id)
+            
             row = await conn.fetchrow("SELECT settings FROM guild_settings WHERE guild_id = $1", guild_id)
             if row and row['settings']:
                 return dict(row['settings'])
