@@ -33,21 +33,31 @@ class Database:
     async def _create_tables(self):
         """Создает все необходимые таблицы и обновляет структуру."""
         async with self.pool.acquire() as conn:
-            # Таблица паспортов (пользователи)
+            # 1. Таблица паспортов (создается, если нет)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS passports (
                     user_id BIGINT PRIMARY KEY,
                     balance BIGINT DEFAULT 0,
+                    signature_url TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 );
             """)
+            
+            # 2. Автоматическое исправление старых ограничений (миграция)
+            # Убираем требование NOT NULL для колонки username, если она есть
+            try:
+                await conn.execute("ALTER TABLE passports ALTER COLUMN username DROP NOT NULL;")
+                logger.info("Миграция: убрано ограничение NOT NULL с колонки username.")
+            except Exception as e:
+                # Если колонки username нет вообще (что нормально для новой БД), просто игнорируем
+                pass 
             
             # Добавляем колонку для подписи, если ее еще нет
             await conn.execute("""
                 ALTER TABLE passports ADD COLUMN IF NOT EXISTS signature_url TEXT;
             """)
             
-            # Таблица инвентаря (для магазина)
+            # 3. Таблица инвентаря (для магазина)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS inventory (
                     id SERIAL PRIMARY KEY,
@@ -57,7 +67,7 @@ class Database:
                 );
             """)
             
-            # Таблица персонажей
+            # 4. Таблица персонажей
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS characters (
                     user_id BIGINT PRIMARY KEY REFERENCES passports(user_id) ON DELETE CASCADE,
