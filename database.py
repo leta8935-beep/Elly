@@ -6,14 +6,12 @@ logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self, db_url: str):
-        # Теперь класс принимает строку подключения, которую ему передает main.py
         self.db_url = db_url
         self.pool: Optional[asyncpg.Pool] = None
 
     async def connect(self):
         """Создает пул соединений и инициализирует таблицы."""
         try:
-            # Для Neon обязательно указываем ssl='require'
             self.pool = await asyncpg.create_pool(
                 dsn=self.db_url,
                 ssl='require',
@@ -33,7 +31,7 @@ class Database:
             logger.info("Соединение с базой данных закрыто.")
 
     async def _create_tables(self):
-        """Создает все необходимые таблицы, если их нет."""
+        """Создает все необходимые таблицы и обновляет структуру."""
         async with self.pool.acquire() as conn:
             # Таблица паспортов (пользователи)
             await conn.execute("""
@@ -42,6 +40,11 @@ class Database:
                     balance BIGINT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT NOW()
                 );
+            """)
+            
+            # Добавляем колонку для подписи, если ее еще нет
+            await conn.execute("""
+                ALTER TABLE passports ADD COLUMN IF NOT EXISTS signature_url TEXT;
             """)
             
             # Таблица инвентаря (для магазина)
@@ -115,6 +118,28 @@ class Database:
             await conn.execute(
                 "UPDATE passports SET balance = $1 WHERE user_id = $2",
                 amount, user_id
+            )
+
+    # ==================== ПОДПИСИ (СИГНАТУРЫ) ====================
+
+    async def set_user_signature(self, user_id: int, signature_url: str) -> None:
+        """Устанавливает URL подписи для пользователя."""
+        async with self.pool.acquire() as conn:
+            # Убедимся, что пользователь существует
+            await conn.execute(
+                "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
+                user_id
+            )
+            await conn.execute(
+                "UPDATE passports SET signature_url = $1 WHERE user_id = $2",
+                signature_url, user_id
+            )
+
+    async def get_user_signature(self, user_id: int) -> Optional[str]:
+        """Получает URL подписи пользователя."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT signature_url FROM passports WHERE user_id = $1", user_id
             )
 
     # ==================== МЕТОДЫ ИНВЕНТАРЯ ====================
