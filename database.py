@@ -1,4 +1,3 @@
-import os
 import asyncpg
 import logging
 from typing import Optional, List, Dict, Any
@@ -6,29 +5,22 @@ from typing import Optional, List, Dict, Any
 logger = logging.getLogger(__name__)
 
 class Database:
-    def __init__(self):
-        self.database_url = os.getenv("DATABASE_URL")
-        if not self.database_url:
-            raise ValueError("Переменная окружения DATABASE_URL не задана!")
-        
-        # Убираем возможные параметры sslmode/channel_binding из URL,
-        # так как asyncpg не понимает их в строке подключения.
-        # SSL мы передаём отдельным параметром.
-        if "?" in self.database_url:
-            self.database_url = self.database_url.split("?")[0]
-
+    def __init__(self, db_url: str):
+        # Теперь класс принимает строку подключения, которую ему передает main.py
+        self.db_url = db_url
         self.pool: Optional[asyncpg.Pool] = None
 
     async def connect(self):
         """Создает пул соединений и инициализирует таблицы."""
         try:
+            # Для Neon обязательно указываем ssl='require'
             self.pool = await asyncpg.create_pool(
-                dsn=self.database_url,
+                dsn=self.db_url,
                 ssl='require',
                 min_size=2,
                 max_size=10
             )
-            logger.info("Успешное подключение к базе данных Neon.")
+            logger.info("Успешное подключение к базе данных.")
             await self._create_tables()
         except Exception as e:
             logger.error(f"Ошибка подключения к базе данных: {e}")
@@ -72,10 +64,10 @@ class Database:
             """)
             logger.info("Таблицы проверены/созданы.")
 
-    # ==================== МЕТОДЫ ПАСПОРТА ====================
+    # ==================== МЕТОДЫ ПАСПОРТА И БАЛАНСА ====================
     
     async def get_passport(self, user_id: int) -> Optional[asyncpg.Record]:
-        """Получает паспорт пользователя."""
+        """Получает паспорт пользователя. Если нет - возвращает None."""
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(
                 "SELECT * FROM passports WHERE user_id = $1", user_id
@@ -90,7 +82,7 @@ class Database:
             )
 
     async def get_balance(self, user_id: int) -> int:
-        """Получает баланс пользователя."""
+        """Получает баланс пользователя (создает паспорт при необходимости)."""
         async with self.pool.acquire() as conn:
             await conn.execute(
                 "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
@@ -102,7 +94,7 @@ class Database:
             return row if row is not None else 0
 
     async def update_balance(self, user_id: int, amount: int) -> None:
-        """Изменяет баланс."""
+        """Изменяет баланс (amount может быть отрицательным)."""
         async with self.pool.acquire() as conn:
             await conn.execute(
                 "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
