@@ -43,14 +43,28 @@ class Database:
                 );
             """)
             
-            # 2. Автоматическое исправление старых ограничений (миграция)
-            # Убираем требование NOT NULL для колонки username, если она есть
+            # 2. АВТОМАТИЧЕСКАЯ МИГРАЦИЯ (Убирает NOT NULL со всех колонок, кроме user_id)
             try:
-                await conn.execute("ALTER TABLE passports ALTER COLUMN username DROP NOT NULL;")
-                logger.info("Миграция: убрано ограничение NOT NULL с колонки username.")
+                # Этот блок кода находит все колонки со строгим NOT NULL и снимает ограничение
+                await conn.execute("""
+                    DO $$
+                    DECLARE
+                        r RECORD;
+                    BEGIN
+                        FOR r IN 
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name = 'passports' 
+                              AND column_name != 'user_id' 
+                              AND is_nullable = 'NO'
+                        LOOP
+                            EXECUTE 'ALTER TABLE passports ALTER COLUMN ' || quote_ident(r.column_name) || ' DROP NOT NULL';
+                        END LOOP;
+                    END $$;
+                """)
+                logger.info("Миграция: все старые ограничения NOT NULL успешно сняты.")
             except Exception as e:
-                # Если колонки username нет вообще (что нормально для новой БД), просто игнорируем
-                pass 
+                logger.warning(f"Миграция не требуется или произошла ошибка: {e}")
             
             # Добавляем колонку для подписи, если ее еще нет
             await conn.execute("""
@@ -80,109 +94,54 @@ class Database:
     # ==================== МЕТОДЫ ПАСПОРТА И БАЛАНСА ====================
     
     async def get_passport(self, user_id: int) -> Optional[asyncpg.Record]:
-        """Получает паспорт пользователя. Если нет - возвращает None."""
         async with self.pool.acquire() as conn:
-            return await conn.fetchrow(
-                "SELECT * FROM passports WHERE user_id = $1", user_id
-            )
+            return await conn.fetchrow("SELECT * FROM passports WHERE user_id = $1", user_id)
 
     async def create_passport(self, user_id: int) -> None:
-        """Создает паспорт, если его нет."""
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
-                user_id
-            )
+            await conn.execute("INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
 
     async def get_balance(self, user_id: int) -> int:
-        """Получает баланс пользователя (создает паспорт при необходимости)."""
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
-                user_id
-            )
-            row = await conn.fetchval(
-                "SELECT balance FROM passports WHERE user_id = $1", user_id
-            )
+            await conn.execute("INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
+            row = await conn.fetchval("SELECT balance FROM passports WHERE user_id = $1", user_id)
             return row if row is not None else 0
 
     async def update_balance(self, user_id: int, amount: int) -> None:
-        """Изменяет баланс (amount может быть отрицательным)."""
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
-                user_id
-            )
-            await conn.execute(
-                "UPDATE passports SET balance = balance + $1 WHERE user_id = $2",
-                amount, user_id
-            )
+            await conn.execute("INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
+            await conn.execute("UPDATE passports SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
 
     async def set_balance(self, user_id: int, amount: int) -> None:
-        """Устанавливает точный баланс."""
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
-                user_id
-            )
-            await conn.execute(
-                "UPDATE passports SET balance = $1 WHERE user_id = $2",
-                amount, user_id
-            )
+            await conn.execute("INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
+            await conn.execute("UPDATE passports SET balance = $1 WHERE user_id = $2", amount, user_id)
 
     # ==================== ПОДПИСИ (СИГНАТУРЫ) ====================
 
     async def set_user_signature(self, user_id: int, signature_url: str) -> None:
-        """Устанавливает URL подписи для пользователя."""
         async with self.pool.acquire() as conn:
-            # Убедимся, что пользователь существует
-            await conn.execute(
-                "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
-                user_id
-            )
-            await conn.execute(
-                "UPDATE passports SET signature_url = $1 WHERE user_id = $2",
-                signature_url, user_id
-            )
+            await conn.execute("INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
+            await conn.execute("UPDATE passports SET signature_url = $1 WHERE user_id = $2", signature_url, user_id)
 
     async def get_user_signature(self, user_id: int) -> Optional[str]:
-        """Получает URL подписи пользователя."""
         async with self.pool.acquire() as conn:
-            return await conn.fetchval(
-                "SELECT signature_url FROM passports WHERE user_id = $1", user_id
-            )
+            return await conn.fetchval("SELECT signature_url FROM passports WHERE user_id = $1", user_id)
 
     # ==================== МЕТОДЫ ИНВЕНТАРЯ ====================
 
     async def add_item(self, user_id: int, item_name: str, quantity: int = 1) -> None:
-        """Добавляет предмет в инвентарь."""
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
-                user_id
-            )
-            existing = await conn.fetchval(
-                "SELECT id FROM inventory WHERE user_id = $1 AND item_name = $2",
-                user_id, item_name
-            )
+            await conn.execute("INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
+            existing = await conn.fetchval("SELECT id FROM inventory WHERE user_id = $1 AND item_name = $2", user_id, item_name)
             if existing:
-                await conn.execute(
-                    "UPDATE inventory SET quantity = quantity + $1 WHERE id = $2",
-                    quantity, existing
-                )
+                await conn.execute("UPDATE inventory SET quantity = quantity + $1 WHERE id = $2", quantity, existing)
             else:
-                await conn.execute(
-                    "INSERT INTO inventory (user_id, item_name, quantity) VALUES ($1, $2, $3)",
-                    user_id, item_name, quantity
-                )
+                await conn.execute("INSERT INTO inventory (user_id, item_name, quantity) VALUES ($1, $2, $3)", user_id, item_name, quantity)
 
     async def remove_item(self, user_id: int, item_name: str, quantity: int = 1) -> bool:
-        """Удаляет предмет. Возвращает True, если успешно."""
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id, quantity FROM inventory WHERE user_id = $1 AND item_name = $2",
-                user_id, item_name
-            )
+            row = await conn.fetchrow("SELECT id, quantity FROM inventory WHERE user_id = $1 AND item_name = $2", user_id, item_name)
             if not row or row['quantity'] < quantity:
                 return False
             
@@ -194,27 +153,18 @@ class Database:
             return True
 
     async def get_inventory(self, user_id: int) -> List[asyncpg.Record]:
-        """Возвращает список предметов пользователя."""
         async with self.pool.acquire() as conn:
-            return await conn.fetch(
-                "SELECT item_name, quantity FROM inventory WHERE user_id = $1 ORDER BY item_name",
-                user_id
-            )
+            return await conn.fetch("SELECT item_name, quantity FROM inventory WHERE user_id = $1 ORDER BY item_name", user_id)
 
     # ==================== ПЕРСОНАЖИ ====================
 
     async def get_character(self, user_id: int) -> Optional[asyncpg.Record]:
         async with self.pool.acquire() as conn:
-            return await conn.fetchrow(
-                "SELECT * FROM characters WHERE user_id = $1", user_id
-            )
+            return await conn.fetchrow("SELECT * FROM characters WHERE user_id = $1", user_id)
 
     async def save_character(self, user_id: int, name: str, data: Dict[str, Any]) -> None:
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
-                user_id
-            )
+            await conn.execute("INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
             await conn.execute("""
                 INSERT INTO characters (user_id, char_name, char_data) 
                 VALUES ($1, $2, $3::jsonb)
