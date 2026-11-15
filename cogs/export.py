@@ -113,7 +113,8 @@ def process_reactions(message: discord.Message) -> str:
     parts = []
     for r in message.reactions:
         emoji = str(r.emoji)
-        if r.custom_emoji:
+        # ИСПРАВЛЕНО: проверяем, что r.emoji является объектом PartialEmoji
+        if isinstance(r.emoji, discord.PartialEmoji):
             emoji = f'<img class="reaction-emoji" src="{r.emoji.url}" />'
         parts.append(f'{emoji} {r.count}')
     return f'<div class="reactions">{" ".join(parts)}</div>'
