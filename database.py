@@ -45,7 +45,6 @@ class Database:
             
             # 2. АВТОМАТИЧЕСКАЯ МИГРАЦИЯ (Убирает NOT NULL со всех колонок, кроме user_id)
             try:
-                # Этот блок кода находит все колонки со строгим NOT NULL и снимает ограничение
                 await conn.execute("""
                     DO $$
                     DECLARE
@@ -89,7 +88,35 @@ class Database:
                     char_data JSONB
                 );
             """)
+
+            # 5. НОВАЯ ТАБЛИЦА: Настройки серверов (для decree.py и других)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS guild_settings (
+                    guild_id BIGINT PRIMARY KEY,
+                    settings JSONB DEFAULT '{}'::jsonb
+                );
+            """)
             logger.info("Таблицы проверены/созданы.")
+
+    # ==================== НАСТРОЙКИ СЕРВЕРА ====================
+
+    async def get_guild_settings(self, guild_id: int) -> dict:
+        """Получает настройки сервера в виде словаря."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT settings FROM guild_settings WHERE guild_id = $1", guild_id)
+            if row and row['settings']:
+                return dict(row['settings'])
+            return {}
+
+    async def update_guild_settings(self, guild_id: int, settings: dict) -> None:
+        """Обновляет настройки сервера (объединяет со старыми)."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO guild_settings (guild_id, settings)
+                VALUES ($1, $2::jsonb)
+                ON CONFLICT (guild_id) DO UPDATE 
+                SET settings = guild_settings.settings || $2::jsonb
+            """, guild_id, settings)
 
     # ==================== МЕТОДЫ ПАСПОРТА И БАЛАНСА ====================
     
