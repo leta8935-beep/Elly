@@ -10,19 +10,25 @@ class Database:
         self.database_url = os.getenv("DATABASE_URL")
         if not self.database_url:
             raise ValueError("Переменная окружения DATABASE_URL не задана!")
+        
+        # Убираем возможные параметры sslmode/channel_binding из URL,
+        # так как asyncpg не понимает их в строке подключения.
+        # SSL мы передаём отдельным параметром.
+        if "?" in self.database_url:
+            self.database_url = self.database_url.split("?")[0]
+
         self.pool: Optional[asyncpg.Pool] = None
 
     async def connect(self):
         """Создает пул соединений и инициализирует таблицы."""
         try:
-            # Для Neon (и других облачных БД) обязательно указываем ssl='require'
             self.pool = await asyncpg.create_pool(
                 dsn=self.database_url,
                 ssl='require',
                 min_size=2,
                 max_size=10
             )
-            logger.info("Успешное подключение к базе данных.")
+            logger.info("Успешное подключение к базе данных Neon.")
             await self._create_tables()
         except Exception as e:
             logger.error(f"Ошибка подключения к базе данных: {e}")
@@ -56,7 +62,7 @@ class Database:
                 );
             """)
             
-            # Таблица персонажей (если используется)
+            # Таблица персонажей
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS characters (
                     user_id BIGINT PRIMARY KEY REFERENCES passports(user_id) ON DELETE CASCADE,
@@ -84,7 +90,7 @@ class Database:
             )
 
     async def get_balance(self, user_id: int) -> int:
-        """Получает баланс пользователя (создает паспорт при необходимости)."""
+        """Получает баланс пользователя."""
         async with self.pool.acquire() as conn:
             await conn.execute(
                 "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
@@ -96,7 +102,7 @@ class Database:
             return row if row is not None else 0
 
     async def update_balance(self, user_id: int, amount: int) -> None:
-        """Изменяет баланс (amount может быть отрицательным)."""
+        """Изменяет баланс."""
         async with self.pool.acquire() as conn:
             await conn.execute(
                 "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
@@ -128,7 +134,6 @@ class Database:
                 "INSERT INTO passports (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
                 user_id
             )
-            # Проверяем, есть ли уже такой предмет
             existing = await conn.fetchval(
                 "SELECT id FROM inventory WHERE user_id = $1 AND item_name = $2",
                 user_id, item_name
